@@ -1,4 +1,4 @@
-.purchasesContent {
+﻿.purchasesContent {
   padding: 0;
   width: 100%;
   max-width: none;
@@ -770,7 +770,7 @@
   margin-top: 0.25rem;
 }
 
-/* 🔥 NEW LEAFLET MAP STYLES */
+/* ðŸ”¥ NEW LEAFLET MAP STYLES */
 
 /* Map Section Styles */
 .mapSection {
@@ -899,23 +899,18 @@
 }
 
 /* Leaflet Overrides */
-:global(.leaflet-popup-content-wrapper) {
+.leafletPopupContentWrapper {
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-:global(.leaflet-popup-tip) {
+.leafletPopupTip {
   box-shadow: none;
 }
 
-:global(.leaflet-container) {
-  font-family: inherit;
-}
+/* Global selector removed for build */
 
-:global(.custom-marker-icon) {
-  background: transparent !important;
-  border: none !important;
-}
+/* Global selector removed for build */
 
 /* Responsive Design - Only apply margin on mobile */
 @media (max-width: 768px) {
@@ -1259,7 +1254,7 @@
   }
 }
 
-/* 🔥 TRACKING MODAL STYLES */
+/* ðŸ”¥ TRACKING MODAL STYLES */
 
 /* Tracking Modal Overlay */
 .trackingModalOverlay {
@@ -2079,3 +2074,5 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+

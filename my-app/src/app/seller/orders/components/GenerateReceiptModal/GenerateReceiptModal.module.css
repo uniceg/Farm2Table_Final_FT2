@@ -1,4 +1,4 @@
-/* app/seller/orders/components/GenerateReceiptModal/GenerateReceiptModal.module.css */
+﻿/* app/seller/orders/components/GenerateReceiptModal/GenerateReceiptModal.module.css */
 .receiptOverlay {
   position: fixed;
   top: 0;
@@ -434,7 +434,7 @@
 }
 
 .termsList li:before {
-  content: "•";
+  content: "â€¢";
   color: #FF6B35;
   font-weight: bold;
   position: absolute;
@@ -622,7 +622,7 @@
   }
   
   /* Adjust font sizes for print */
-  body {
+  .receiptModal body {
     font-size: 12px;
   }
   

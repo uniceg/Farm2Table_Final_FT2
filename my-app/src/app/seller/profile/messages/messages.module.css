@@ -1,5 +1,5 @@
-/* Seller Messages Styles - Same as buyer but without seller search */
-html, body {
+﻿/* Seller Messages Styles - Same as buyer but without seller search */
+.sellerMessagesContainer html, .sellerMessagesContainer body {
   height: 100%;
   margin: 0;
   padding: 0;
@@ -1508,12 +1508,12 @@ html, body {
 }
 
 .conversationStatus::before {
-  content: "💬";
+  content: "ðŸ’¬";
   font-size: 10px;
 }
 
 .newConversationStatus::before {
-  content: "✨";
+  content: "âœ¨";
   font-size: 10px;
 }
 
@@ -1525,7 +1525,7 @@ html, body {
 }
 
 .buyerEmail::before {
-  content: "✉️";
+  content: "âœ‰ï¸";
   font-size: 12px;
   opacity: 0.7;
 }

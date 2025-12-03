@@ -1,11 +1,12 @@
- "use client"; 
+﻿"use client";
+import { Suspense } from 'react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../utils/lib/firebase';
 
-export default function PaymentSuccess() {
+function PaymentSuccessContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState('loading');
   const [orderId, setOrderId] = useState('');
@@ -37,7 +38,7 @@ export default function PaymentSuccess() {
       const orderData = JSON.parse(pendingOrderData);
       const items = cartItems ? JSON.parse(cartItems) : [];
 
-      console.log('📦 Order data:', orderData);
+      console.log('📋 Order data:', orderData);
       console.log('🛒 Cart items:', items);
 
       // 2. Prepare complete order data for Firebase
@@ -74,7 +75,7 @@ export default function PaymentSuccess() {
       await setDoc(orderRef, completeOrderData);
       
       console.log('✅ Order saved to Firebase with ID:', finalOrderId);
-      console.log('📊 Order details:', completeOrderData);
+      console.log('📄 Order details:', completeOrderData);
 
       // 5. Clear local storage
       localStorage.removeItem('pendingOrder');
@@ -164,7 +165,7 @@ export default function PaymentSuccess() {
           <strong>Payment ID:</strong> {searchParams.get('payment_intent_id')}
         </p>
         <p style={{ margin: '5px 0', fontSize: '12px', color: '#059669' }}>
-          ✓ Test Mode Order - Saved to Firebase
+          ✅ Test Mode Order - Saved to Firebase
         </p>
       </div>
 
@@ -203,5 +204,19 @@ export default function PaymentSuccess() {
         </Link>
       </div>
     </div>
+  );
+}
+
+// ADD THIS AT THE END:
+export default function PaymentSuccess() {
+  return (
+    <Suspense fallback={
+      <div style={{ padding: '40px', textAlign: 'center' }}>
+        <h2>Loading...</h2>
+        <p>Preparing payment information...</p>
+      </div>
+    }>
+      <PaymentSuccessContent />
+    </Suspense>
   );
 }

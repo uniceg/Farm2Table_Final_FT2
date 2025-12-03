@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import styles from "./forgot-password.module.css";
+import styles from "./forgotPassword.module.css";
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from "../../../utils/lib/firebase";
 
