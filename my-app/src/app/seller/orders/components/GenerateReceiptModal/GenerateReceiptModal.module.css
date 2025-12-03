@@ -1,0 +1,712 @@
+/* app/seller/orders/components/GenerateReceiptModal/GenerateReceiptModal.module.css */
+.receiptOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+}
+
+.receiptModal {
+  background: white;
+  border-radius: 12px;
+  width: 900px;
+  max-width: 95%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  position: relative;
+  overflow-y: auto;
+}
+
+.receiptHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 30px;
+  background: linear-gradient(135deg, #FF6B35 0%, #FF8B35 100%);
+  color: white;
+  border-radius: 12px 12px 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.headerContent {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.headerContent svg {
+  color: white;
+}
+
+.receiptHeader h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: white;
+}
+
+.orderNumber {
+  margin: 5px 0 0;
+  font-size: 0.9rem;
+  opacity: 0.9;
+  color: white;
+}
+
+.closeBtn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 50%;
+  padding: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.closeBtn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: rotate(90deg);
+}
+
+.receiptContent {
+  padding: 30px;
+  flex: 1;
+  background: #f8f9fa;
+}
+
+/* Waybill Container */
+.waybillContainer {
+  background: white;
+  border-radius: 8px;
+  padding: 30px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+}
+
+/* Header */
+.waybillHeader {
+  text-align: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 3px solid #FF6B35;
+}
+
+.companyName {
+  color: #FF6B35;
+  font-size: 2.2rem;
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.companyTagline {
+  color: #666;
+  font-size: 0.9rem;
+  margin: 5px 0 15px;
+  letter-spacing: 1px;
+}
+
+.waybillTitle h2 {
+  color: #273F4F;
+  font-size: 1.8rem;
+  margin: 0 0 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.waybillMeta {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  margin-top: 15px;
+}
+
+.metaItem {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.metaItem span {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.metaItem strong {
+  color: #273F4F;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+/* Parties Grid */
+.partiesGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  margin-bottom: 25px;
+}
+
+.partyColumn {
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+.partyHeader {
+  background: linear-gradient(135deg, #273F4F 0%, #3A536B 100%);
+  color: white;
+  padding: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.partyHeader h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.partyIcon {
+  font-size: 1.2rem;
+}
+
+.partyDetails {
+  padding: 20px;
+}
+
+.detailRow {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #e5e7eb;
+}
+
+.detailRow:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.detailRow span {
+  color: #666;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.detailRow strong {
+  color: #273F4F;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: right;
+  max-width: 60%;
+}
+
+/* Info Grid */
+.infoGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 25px;
+  margin-bottom: 30px;
+}
+
+.infoColumn {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 20px;
+  background: #fafafa;
+}
+
+.infoColumn h4 {
+  color: #273F4F;
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 15px;
+  text-transform: uppercase;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #FF6B35;
+}
+
+.infoDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.infoRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.infoRow span {
+  color: #666;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.infoRow strong {
+  color: #273F4F;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.trackingNumber,
+.transactionId {
+  font-family: 'Courier New', monospace;
+  background: #f0f0f0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.statusBadge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.statusBadge.paid {
+  background: #D1FAE5;
+  color: #047857;
+}
+
+.statusBadge.pending {
+  background: #FEF3C7;
+  color: #D97706;
+}
+
+/* Items Section */
+.itemsSection {
+  margin-bottom: 30px;
+}
+
+.itemsSection h4 {
+  color: #273F4F;
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 15px;
+  text-transform: uppercase;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #FF6B35;
+}
+
+.itemsTable {
+  width: 100%;
+  border-collapse: collapse;
+  border: 2px solid #273F4F;
+  background: white;
+}
+
+.itemsTable th {
+  background: #F5E6D3;
+  color: #273F4F;
+  padding: 12px 10px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid #273F4F;
+}
+
+.itemsTable td {
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  font-size: 0.9rem;
+  color: #273F4F;
+}
+
+.itemsTable tbody tr:nth-child(even) {
+  background: #fafafa;
+}
+
+.numberCell {
+  text-align: center;
+  font-weight: 600;
+  width: 40px;
+}
+
+.descriptionCell {
+  font-weight: 500;
+}
+
+.quantityCell {
+  text-align: center;
+  width: 80px;
+}
+
+.priceCell,
+.amountCell {
+  text-align: right;
+  width: 100px;
+  font-weight: 600;
+}
+
+.totalRow {
+  background: #FAFAFA;
+  font-weight: 700;
+}
+
+.totalLabel {
+  text-align: right;
+  padding-right: 20px !important;
+  color: #273F4F !important;
+  font-size: 1rem;
+}
+
+.totalAmount {
+  color: #273F4F !important;
+  font-size: 1.1rem;
+  background: #F5E6D3 !important;
+}
+
+/* Instructions Section */
+.instructionsSection {
+  margin-bottom: 30px;
+}
+
+.instructionsSection h4 {
+  color: #273F4F;
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 15px;
+  text-transform: uppercase;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #FF6B35;
+}
+
+.instructionsBox {
+  background: #f8f9fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 20px;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #273F4F;
+}
+
+/* Footer */
+.waybillFooter {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 2px solid #e5e7eb;
+}
+
+.termsSection h5 {
+  color: #273F4F;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+}
+
+.termsList {
+  margin: 0 0 20px;
+  padding-left: 20px;
+  list-style-type: none;
+}
+
+.termsList li {
+  color: #666;
+  font-size: 0.85rem;
+  margin-bottom: 6px;
+  position: relative;
+  padding-left: 15px;
+}
+
+.termsList li:before {
+  content: "•";
+  color: #FF6B35;
+  font-weight: bold;
+  position: absolute;
+  left: 0;
+}
+
+.signaturesSection {
+  display: flex;
+  justify-content: space-between;
+  margin: 40px 0 30px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.signatureBox {
+  text-align: center;
+  width: 30%;
+}
+
+.signatureLine {
+  height: 1px;
+  background: #273F4F;
+  margin: 0 auto 10px;
+  width: 80%;
+}
+
+.signatureBox p {
+  margin: 5px 0 0;
+  color: #666;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.footerNote {
+  text-align: center;
+  color: #666;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px dashed #e5e7eb;
+}
+
+.printNote {
+  color: #888;
+  font-size: 0.8rem;
+  font-style: italic;
+  margin-top: 10px;
+}
+
+/* Action Buttons */
+.actionButtons {
+  display: flex;
+  gap: 15px;
+  padding: 20px 30px;
+  background: #f8f9fa;
+  border-top: 1px solid #e5e7eb;
+  border-radius: 0 0 12px 12px;
+}
+
+.printBtn,
+.downloadBtn {
+  flex: 1;
+  padding: 14px 24px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.printBtn {
+  background: linear-gradient(135deg, #273F4F 0%, #3A536B 100%);
+  color: white;
+}
+
+.downloadBtn {
+  background: linear-gradient(135deg, #FF6B35 0%, #FF8B35 100%);
+  color: white;
+}
+
+.printBtn:hover {
+  background: linear-gradient(135deg, #3A536B 0%, #273F4F 100%);
+  transform: translateY(-1px);
+}
+
+.downloadBtn:hover {
+  background: linear-gradient(135deg, #FF8B35 0%, #FF6B35 100%);
+  transform: translateY(-1px);
+}
+
+.printBtn:active,
+.downloadBtn:active {
+  transform: translateY(0);
+}
+
+/* Print Styles */
+@media print {
+  .receiptOverlay {
+    position: static;
+    background: white;
+    padding: 0;
+    height: auto;
+  }
+  
+  .receiptModal {
+    width: 100%;
+    max-width: 100%;
+    max-height: none;
+    box-shadow: none;
+    border-radius: 0;
+    margin: 0;
+  }
+  
+  .receiptHeader,
+  .actionButtons {
+    display: none;
+  }
+  
+  .receiptContent {
+    padding: 20px;
+    background: white;
+  }
+  
+  .waybillContainer {
+    box-shadow: none;
+    border: none;
+    padding: 0;
+  }
+  
+  .partiesGrid,
+  .infoGrid {
+    gap: 20px;
+  }
+  
+  /* Ensure colors print correctly */
+  .companyName {
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+  }
+  
+  .partyHeader {
+    background: #f0f0f0 !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+  }
+  
+  .itemsTable th {
+    background: #f0f0f0 !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+  }
+  
+  .totalAmount {
+    background: #f0f0f0 !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+  }
+  
+  /* Hide print note in actual print */
+  .printNote {
+    display: none;
+  }
+  
+  /* Page break control */
+  .waybillContainer {
+    page-break-inside: avoid;
+  }
+  
+  .itemsSection {
+    page-break-inside: avoid;
+  }
+  
+  .waybillFooter {
+    page-break-inside: avoid;
+  }
+  
+  /* Adjust font sizes for print */
+  body {
+    font-size: 12px;
+  }
+  
+  .companyName {
+    font-size: 28px;
+  }
+  
+  .itemsTable th,
+  .itemsTable td {
+    font-size: 11px;
+    padding: 8px 6px;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .receiptModal {
+    max-width: 100%;
+    margin: 10px;
+  }
+  
+  .receiptContent {
+    padding: 20px;
+  }
+  
+  .waybillContainer {
+    padding: 20px;
+  }
+  
+  .partiesGrid,
+  .infoGrid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  
+  .waybillMeta {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  
+  .companyName {
+    font-size: 1.8rem;
+  }
+  
+  .signaturesSection {
+    flex-direction: column;
+    gap: 20px;
+  }
+  
+  .signatureBox {
+    width: 100%;
+  }
+  
+  .actionButtons {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .receiptContent {
+    padding: 15px;
+  }
+  
+  .waybillContainer {
+    padding: 15px;
+  }
+  
+  .companyName {
+    font-size: 1.5rem;
+  }
+  
+  .itemsTable {
+    display: block;
+    overflow-x: auto;
+  }
+  
+  .detailRow {
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  .detailRow strong {
+    text-align: left;
+    max-width: 100%;
+  }
+}
