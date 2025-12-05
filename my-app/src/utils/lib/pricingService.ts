@@ -18,6 +18,17 @@ export interface PriceCalculation {
   vatAmount: number;
   subtotal: number;
   finalPrice: number;
+  // 🟢 ADDED: DTI-compliant breakdown for transparency
+  breakdown?: {
+    productPrice: number;
+    platformFeeWithVat: number;
+    shippingFee: number;
+    vatOnProduct: number;
+    vatOnPlatformFee: number;
+    subtotalBeforeVat: number;
+    totalVat: number;
+    grandTotal: number;
+  };
 }
 
 export interface ShippingCalculation {
@@ -71,7 +82,10 @@ export class PricingService {
       );
       
       const snapshot = await getDocs(salesQuery);
-      if (snapshot.empty) return this.calculateMarketBasedPrice(category).averagePrice;
+      if (snapshot.empty) {
+        // 🟢 FIXED: Provide default unit when calling calculateMarketBasedPrice
+        return this.calculateMarketBasedPrice(category, 'kg').averagePrice;
+      }
       
       const prices = snapshot.docs.map(doc => doc.data().price).filter(Boolean);
       const average = prices.reduce((sum, price) => sum + price, 0) / prices.length;
@@ -79,13 +93,15 @@ export class PricingService {
       return Math.round(average);
     } catch (error) {
       console.error("Error getting platform average price:", error);
-      return this.calculateMarketBasedPrice(category).averagePrice;
+      // 🟢 FIXED: Provide default unit when calling calculateMarketBasedPrice
+      return this.calculateMarketBasedPrice(category, 'kg').averagePrice;
     }
   }
 }
 
 export class PricingCalculator {
-  // Calculate complete price breakdown
+  // 🟢 DTI-COMPLIANT: Calculate complete price breakdown
+  // VAT applied ONLY to product + platform fee (NOT shipping)
   static calculateProductPricing(
     farmerInputPrice: number,
     category: string,
@@ -97,18 +113,42 @@ export class PricingCalculator {
     const marketPrice = this.calculateMarketPrice(category, unit, farmerInputPrice);
     const farmerMarkup = Math.max(0, farmerInputPrice - marketPrice);
     const platformFee = farmerInputPrice * platformFeePercentage;
-    const subtotal = farmerInputPrice + platformFee + shippingCalculation.total;
-    const vatAmount = subtotal * 0.12;
+    
+    // 🟢 DTI-COMPLIANT: VAT on product + platform fee ONLY
+    // Shipping is VAT-exempt per DTI/BIR regulations
+    const subtotalBeforeVat = farmerInputPrice + platformFee;
+    const vatAmount = subtotalBeforeVat * 0.12;
+    
+    // Shipping is VAT-exempt
+    const shippingFee = shippingCalculation.total;
+    
+    const subtotal = farmerInputPrice + platformFee + shippingFee;
     const finalPrice = subtotal + vatAmount;
+
+    // 🟢 DTI-compliant detailed breakdown
+    const vatOnProduct = farmerInputPrice * 0.12;
+    const vatOnPlatformFee = platformFee * 0.12;
+    const platformFeeWithVat = parseFloat((platformFee * 1.12).toFixed(2));
 
     return {
       marketPrice,
       farmerMarkup,
-      platformFee: Math.round(platformFee),
-      shippingFee: shippingCalculation.total,
-      vatAmount: Math.round(vatAmount * 100) / 100,
-      subtotal: Math.round(subtotal * 100) / 100,
-      finalPrice: Math.round(finalPrice * 100) / 100
+      platformFee: parseFloat(platformFee.toFixed(2)),
+      shippingFee: shippingFee,
+      vatAmount: parseFloat(vatAmount.toFixed(2)),
+      subtotal: parseFloat(subtotal.toFixed(2)),
+      finalPrice: parseFloat(finalPrice.toFixed(2)),
+      // Detailed DTI-compliant breakdown
+      breakdown: {
+        productPrice: farmerInputPrice,
+        platformFeeWithVat: platformFeeWithVat,
+        shippingFee: shippingFee,
+        vatOnProduct: parseFloat(vatOnProduct.toFixed(2)),
+        vatOnPlatformFee: parseFloat(vatOnPlatformFee.toFixed(2)),
+        subtotalBeforeVat: parseFloat(subtotalBeforeVat.toFixed(2)),
+        totalVat: parseFloat(vatAmount.toFixed(2)),
+        grandTotal: parseFloat(finalPrice.toFixed(2))
+      }
     };
   }
 
@@ -117,6 +157,7 @@ export class PricingCalculator {
     unit: string, 
     farmerPrice: number
   ): number {
+    // 🟢 FIXED: Pass both category and unit to calculateMarketBasedPrice
     const marketData = PricingService.calculateMarketBasedPrice(category, unit);
     const validation = this.validateFarmerPrice(farmerPrice, category, unit);
     return validation.isValid ? farmerPrice : marketData.averagePrice;
@@ -128,6 +169,7 @@ export class PricingCalculator {
     unit: string
   ): { isValid: boolean; suggestion?: number; reason: string } {
     
+    // 🟢 FIXED: Pass both category and unit to calculateMarketBasedPrice
     const marketData = PricingService.calculateMarketBasedPrice(category, unit);
     const marketAverage = marketData.averagePrice;
     const minAllowed = marketAverage * 0.6;
@@ -210,6 +252,113 @@ export class PricingCalculator {
       Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
       Math.sin(dLng/2) * Math.sin(dLng/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
+    return parseFloat((R * c).toFixed(2));
+  }
+
+  // 🟢 ADDED: Generate DTI-compliant price breakdown display
+  static generateDTIPriceBreakdown(priceCalculation: PriceCalculation): string {
+    const { breakdown } = priceCalculation;
+    
+    if (!breakdown) {
+      return `
+Product Price: ₱${priceCalculation.marketPrice.toFixed(2)}
+Platform Fee (5%): ₱${priceCalculation.platformFee.toFixed(2)}
+Shipping Fee: ₱${priceCalculation.shippingFee.toFixed(2)}
+VAT (12%): ₱${priceCalculation.vatAmount.toFixed(2)}
+Total: ₱${priceCalculation.finalPrice.toFixed(2)}
+      `.trim();
+    }
+    
+    return `
+Product Price: ₱${breakdown.productPrice.toFixed(2)}
+Platform Fee (${priceCalculation.platformFee / breakdown.productPrice * 100}%): ₱${breakdown.platformFeeWithVat.toFixed(2)} (incl. VAT)
+Shipping Fee: ₱${breakdown.shippingFee.toFixed(2)} (VAT-exempt)
+VAT Breakdown:
+  - On Product: ₱${breakdown.vatOnProduct.toFixed(2)}
+  - On Platform Fee: ₱${breakdown.vatOnPlatformFee.toFixed(2)}
+Total VAT (12%): ₱${breakdown.totalVat.toFixed(2)}
+Grand Total: ₱${breakdown.grandTotal.toFixed(2)}
+    `.trim();
+  }
+
+  // 🟢 ADDED: Calculate DTI-compliant total for cart/checkout
+  static calculateDTICompliantTotal(
+    productPrice: number,
+    platformFee: number,
+    shippingFee: number
+  ): { subtotal: number; vat: number; total: number } {
+    // VAT on product + platform fee only (not shipping)
+    const taxableAmount = productPrice + platformFee;
+    const vat = taxableAmount * 0.12;
+    const total = productPrice + platformFee + shippingFee + vat;
+    
+    return {
+      subtotal: parseFloat((productPrice + platformFee + shippingFee).toFixed(2)),
+      vat: parseFloat(vat.toFixed(2)),
+      total: parseFloat(total.toFixed(2))
+    };
+  }
+
+  // 🟢 ADDED: Check if price is DTI-compliant
+  static isPriceDTICompliant(
+    productPrice: number,
+    platformFee: number,
+    shippingFee: number,
+    vatAmount: number
+  ): { isCompliant: boolean; reason: string; expectedVat: number } {
+    // DTI-compliant: VAT should be 12% of (productPrice + platformFee)
+    const expectedVat = (productPrice + platformFee) * 0.12;
+    const vatDifference = Math.abs(vatAmount - expectedVat);
+    const isCompliant = vatDifference < 0.01; // Allow small rounding differences
+    
+    if (isCompliant) {
+      return {
+        isCompliant: true,
+        reason: "Price structure follows DTI regulations (VAT on product + platform fee only)",
+        expectedVat: parseFloat(expectedVat.toFixed(2))
+      };
+    } else {
+      return {
+        isCompliant: false,
+        reason: `VAT should be ₱${expectedVat.toFixed(2)} (12% of ₱${(productPrice + platformFee).toFixed(2)}) not ₱${vatAmount.toFixed(2)}`,
+        expectedVat: parseFloat(expectedVat.toFixed(2))
+      };
+    }
+  }
+
+  // 🟢 ADDED: Test function to verify DTI compliance
+  static testDTICompliance(): void {
+    console.log("=== DTI Compliance Test ===");
+    
+    // Test with your example: ₱150 product, 2% platform fee, ₱35 shipping
+    const productPrice = 150;
+    const platformFeePercentage = 0.02;
+    const platformFee = productPrice * platformFeePercentage; // ₱3
+    const shippingFee = 35;
+    
+    // Wrong calculation (your current output)
+    const wrongVat = (productPrice + platformFee + shippingFee) * 0.12;
+    const wrongTotal = productPrice + platformFee + shippingFee + wrongVat;
+    
+    // Correct DTI calculation
+    const correctVat = (productPrice + platformFee) * 0.12;
+    const correctTotal = productPrice + platformFee + shippingFee + correctVat;
+    
+    console.log("Product Price: ₱" + productPrice.toFixed(2));
+    console.log("Platform Fee (" + (platformFeePercentage * 100) + "%): ₱" + platformFee.toFixed(2));
+    console.log("Shipping Fee: ₱" + shippingFee.toFixed(2));
+    console.log("\n❌ WRONG (VAT on everything):");
+    console.log("  VAT (12%): ₱" + wrongVat.toFixed(2));
+    console.log("  Total: ₱" + wrongTotal.toFixed(2));
+    console.log("\n✅ CORRECT (DTI-compliant):");
+    console.log("  VAT (12% on ₱" + (productPrice + platformFee).toFixed(2) + " only): ₱" + correctVat.toFixed(2));
+    console.log("  Total: ₱" + correctTotal.toFixed(2));
+    console.log("\nDifference: ₱" + (wrongTotal - correctTotal).toFixed(2) + " (buyer overcharged!)");
+    
+    // Test the compliance check
+    const complianceCheck = this.isPriceDTICompliant(productPrice, platformFee, shippingFee, wrongVat);
+    console.log("\nCompliance Check:");
+    console.log("Is compliant?", complianceCheck.isCompliant);
+    console.log("Reason:", complianceCheck.reason);
   }
 }

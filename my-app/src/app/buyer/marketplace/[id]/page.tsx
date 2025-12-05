@@ -799,16 +799,24 @@ export default function ProductPage() {
     }
   };
 
+  // ✅ FIXED: Updated handleOrderSuccess to include orderNumber
   const handleOrderSuccess = (orderData: any) => {
     console.log("🎉 Order success received:", orderData);
+    console.log("🔍 DEBUG - Full orderData from CartSidebar:", orderData);
+    console.log("🔍 Order ID:", orderData.id);
+    console.log("🔍 Order Number:", orderData.orderNumber);
+    console.log("🔍 Payment Method:", orderData.paymentMethod);
     
     setOrderSuccessData({
       id: orderData.id,
+      orderNumber: orderData.orderNumber, // ✅ ADDED: Include orderNumber
       totalPrice: orderData.totalPrice,
       deliveryMethod: orderData.deliveryMethod,
       deliveryTime: orderData.deliveryTime,
       deliveryDate: orderData.deliveryDate,
-      itemCount: orderData.itemCount
+      itemCount: orderData.itemCount,
+      paymentMethod: orderData.paymentMethod || 'Cash on Delivery', // ✅ ADDED: Payment method
+      status: orderData.status || 'pending' // ✅ ADDED: Status
     });
     
     setShowSuccessModal(true);

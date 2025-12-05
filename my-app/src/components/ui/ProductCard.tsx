@@ -551,10 +551,10 @@ export default function ProductCard({
   const hasTags = product.requiresColdChain || displayTags.length > 0;
   const shouldShowDeliveryInfo = showDeliveryInfo && deliveryInfo !== null;
 
-  // 🟢 FIXED: Use finalPrice if available, otherwise use displayPrice or price
-  const displayPrice = product.finalPrice 
-    ? product.finalPrice.toString() 
-    : product.displayPrice || product.price;
+  // 🔥 CRITICAL FIX: Show the original seller price, NOT the final price with fees
+  // Changed from: product.finalPrice ? product.finalPrice.toString() : product.displayPrice || product.price;
+  // To: product.price?.toString() || "0";
+  const displayPrice = product.price?.toString() || "0";
 
   // ✅ ADDED: Check if cart button should be disabled
   const isCartButtonDisabled = isAddingToCart || isOutOfStock || !buyerVerification.isVerified;

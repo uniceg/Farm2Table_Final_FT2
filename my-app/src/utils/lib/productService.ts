@@ -497,6 +497,7 @@ export const addProduct = async (productData: ProductData, sellerId: string): Pr
       marketPrice: priceBreakdown.marketPrice,
       platformFee: priceBreakdown.platformFee,
       shippingFee: priceBreakdown.shippingFee,
+      // 🟢 DTI-COMPLIANT: VAT on product + platform fee ONLY (NOT shipping)
       vatAmount: priceBreakdown.vatAmount,
       finalPrice: priceBreakdown.finalPrice,
       // 🟢 ADDED: Shipping calculation fields

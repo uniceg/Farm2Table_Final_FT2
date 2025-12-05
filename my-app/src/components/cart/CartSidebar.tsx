@@ -450,7 +450,7 @@ export default function CartSidebar({
     return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
   };
   
-  // ✅ UPDATED: Single, consistent price calculation function
+  // ✅✅✅ FIXED: Single, consistent DTI-COMPLIANT price calculation function
   const calculatePriceBreakdown = () => {
     const itemsTotal = calculateItemsTotal();
     
@@ -463,18 +463,29 @@ export default function CartSidebar({
       shippingFee = selectedDelivery.price;
     }
     
-    // ✅ VAT is calculated on items + platform fee + shipping
-    const vatAmount = (itemsTotal + platformFee + shippingFee) * 0.12;
+    // ✅✅✅ FIXED: DTI-COMPLIANT - VAT on items + platform fee ONLY (NOT shipping)
+    const taxableAmount = itemsTotal + platformFee;
+    const vatAmount = taxableAmount * 0.12;
     
     // ✅ Final price is the sum of all components
     const finalPrice = itemsTotal + platformFee + shippingFee + vatAmount;
+    
+    // ✅ DEBUG: Log the calculation for verification
+    console.log("💰 DTI-Compliant Price Breakdown:");
+    console.log("Items Total:", itemsTotal);
+    console.log("Platform Fee (2%):", platformFee);
+    console.log("Shipping Fee:", shippingFee);
+    console.log("VAT Base (items + platform fee):", taxableAmount);
+    console.log("VAT Amount (12% of VAT base):", vatAmount);
+    console.log("Final Price:", finalPrice);
     
     return {
       itemsTotal: Math.round(itemsTotal * 100) / 100,
       platformFee: Math.round(platformFee * 100) / 100,
       shippingFee: Math.round(shippingFee * 100) / 100,
       vatAmount: Math.round(vatAmount * 100) / 100,
-      finalPrice: Math.round(finalPrice * 100) / 100
+      finalPrice: Math.round(finalPrice * 100) / 100,
+      taxableAmount: Math.round(taxableAmount * 100) / 100
     };
   };
   
@@ -1466,7 +1477,7 @@ export default function CartSidebar({
               </div>
             </div>
             
-            {/* ✅ UPDATED: Price Breakdown Section with consistent calculations */}
+            {/* ✅ UPDATED: Price Breakdown Section with consistent DTI-COMPLIANT calculations */}
             <div className={styles.priceBreakdownSection}>
               <div 
                 className={styles.breakdownHeader}
@@ -1508,7 +1519,7 @@ export default function CartSidebar({
               )}
             </div>
             
-            {/* ✅ UPDATED: Order Summary - Now shows ONLY ONE consistent total */}
+            {/* ✅ UPDATED: Order Summary - Now shows ONLY ONE consistent DTI-COMPLIANT total */}
             <div className={styles.orderSummary}>
               <h4 className={styles.sectionTitle}>Order Summary</h4>
               <div className={styles.summaryRow}>

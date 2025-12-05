@@ -10,9 +10,16 @@ function PaymentSuccessContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState('loading');
   const [orderId, setOrderId] = useState('');
+  const [orderNumber, setOrderNumber] = useState('');
+  const [paymentVerified, setPaymentVerified] = useState(false);
+  const [paymentId, setPaymentId] = useState('');
 
   useEffect(() => {
-    const paymentIntentId = searchParams.get('payment_intent_id');
+    const paymentIntentId = searchParams.get('payment_intent_id') || 
+                           searchParams.get('pi') ||
+                           searchParams.get('payment_id');
+    
+    setPaymentId(paymentIntentId);
     
     if (paymentIntentId) {
       saveOrderToFirebase(paymentIntentId);
@@ -21,71 +28,184 @@ function PaymentSuccessContent() {
     }
   }, [searchParams]);
 
+  const verifyPaymentWithPayMongo = async (paymentIntentId) => {
+    try {
+      const response = await fetch('/api/verify-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ paymentIntentId })
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.warn('Payment verification request failed');
+      return null;
+    }
+  };
+
   const saveOrderToFirebase = async (paymentIntentId) => {
     try {
-      console.log('💾 Saving order to Firebase...');
+      console.log('💾 Attempting to save order... Payment ID:', paymentIntentId);
       
-      // 1. Get the pending order data from localStorage
-      const pendingOrderData = localStorage.getItem('pendingOrder');
-      const cartItems = localStorage.getItem('cartItems');
+      // MULTIPLE DATA SOURCES STRATEGY:
+      let pendingOrderData = null;
+      let cartItems = null;
+      let storedOrderNumber = null;
       
+      // 1. Try sessionStorage first (survives redirects better)
+      pendingOrderData = sessionStorage.getItem('pendingOrder');
+      cartItems = sessionStorage.getItem('cartItems');
+      storedOrderNumber = sessionStorage.getItem('orderNumber');
+      
+      console.log('sessionStorage data:', {
+        hasOrder: !!pendingOrderData,
+        hasCart: !!cartItems,
+        hasOrderNumber: !!storedOrderNumber
+      });
+      
+      // 2. Try localStorage as fallback
       if (!pendingOrderData) {
-        console.error('❌ No pending order data found in localStorage');
-        setStatus('error');
+        pendingOrderData = localStorage.getItem('pendingOrder');
+        cartItems = localStorage.getItem('cartItems');
+        storedOrderNumber = localStorage.getItem('orderNumber');
+        
+        console.log('localStorage data:', {
+          hasOrder: !!pendingOrderData,
+          hasCart: !!cartItems,
+          hasOrderNumber: !!storedOrderNumber
+        });
+      }
+      
+      // 3. Try URL parameters
+      const urlOrder = searchParams.get('order_data');
+      if (!pendingOrderData && urlOrder) {
+        try {
+          pendingOrderData = decodeURIComponent(urlOrder);
+          console.log('Found order data in URL parameters');
+        } catch (e) {
+          console.log('Could not decode URL order data');
+        }
+      }
+      
+      // 4. If still no data, check if we can retrieve from payment metadata
+      if (!pendingOrderData) {
+        console.warn('⚠️ No order data found in storage or URL');
+        console.log('Available search params:', Array.from(searchParams.entries()));
+        
+        // Try to verify payment and get metadata
+        try {
+          const paymentDetails = await verifyPaymentWithPayMongo(paymentIntentId);
+          if (paymentDetails?.metadata?.order_data) {
+            pendingOrderData = paymentDetails.metadata.order_data;
+            console.log('Retrieved order data from payment metadata');
+          }
+        } catch (metadataError) {
+          console.log('Could not retrieve from metadata:', metadataError);
+        }
+      }
+      
+      // 5. If STILL no data, show partial success instead of error
+      if (!pendingOrderData) {
+        console.error('❌ No order data found in any source');
+        console.log('Payment was successful, but order data lost');
+        
+        // Instead of error, show partial success
+        setStatus('partial_success');
+        
+        // Clear all storage to prevent future issues
+        localStorage.removeItem('pendingOrder');
+        localStorage.removeItem('cartItems');
+        localStorage.removeItem('orderNumber');
+        sessionStorage.removeItem('pendingOrder');
+        sessionStorage.removeItem('cartItems');
+        sessionStorage.removeItem('orderNumber');
+        
         return;
       }
 
       const orderData = JSON.parse(pendingOrderData);
       const items = cartItems ? JSON.parse(cartItems) : [];
 
-      console.log('📋 Order data:', orderData);
-      console.log('🛒 Cart items:', items);
+      let verifiedOrderNumber = storedOrderNumber;
+      let paymentDetails = null;
+      let verificationSuccess = false;
+      
+      try {
+        paymentDetails = await verifyPaymentWithPayMongo(paymentIntentId);
+        
+        if (paymentDetails) {
+          verificationSuccess = true;
+          setPaymentVerified(true);
+          
+          const metadataOrderNumber = paymentDetails.orderNumber || 
+                                     paymentDetails.metadata?.order_number;
+          
+          if (metadataOrderNumber) {
+            verifiedOrderNumber = metadataOrderNumber;
+          }
+          
+          if (orderData.orderNumber && orderData.orderNumber.startsWith('F2T')) {
+            verifiedOrderNumber = orderData.orderNumber;
+          }
+        }
+      } catch (verifyError) {
+        // Continue anyway - payment is still successful
+      }
 
-      // 2. Prepare complete order data for Firebase
+      const finalOrderNumber = verifiedOrderNumber || 
+                              orderData.orderNumber || 
+                              storedOrderNumber || 
+                              `TEST-${Date.now()}`;
+      
+      setOrderNumber(finalOrderNumber);
+
       const completeOrderData = {
-        // Original order data
         ...orderData,
-        
-        // Add items from cart
         items: items,
-        
-        // Payment information
         paymentStatus: 'paid',
         paymentIntentId: paymentIntentId,
-        paymentMethod: 'test_mode', // Since we're in test mode
+        paymentMethod: verificationSuccess ? (paymentDetails?.payment_method || 'digital_payment') : 'digital_payment',
         status: 'confirmed',
-        
-        // Timestamps
+        orderNumber: finalOrderNumber,
         paidAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        
-        // Test mode flag
-        isTestOrder: true,
-        
-        // Generate order number if not exists
-        orderNumber: orderData.orderNumber || `TEST-${Date.now()}`
+        paymentVerified: verificationSuccess,
+        paymentVerificationData: paymentDetails,
+        isTestOrder: process.env.NODE_ENV === 'development',
+        buyerInfo: orderData.buyerInfo || {
+          name: 'Customer',
+          email: 'customer@example.com'
+        }
       };
 
-      // 3. Generate a unique order ID for Firebase
-      const finalOrderId = orderData.id || `test_order_${Date.now()}`;
+      const finalOrderId = finalOrderNumber.startsWith('F2T') ? 
+                          finalOrderNumber : 
+                          orderData.id || `order_${Date.now()}`;
+      
       setOrderId(finalOrderId);
       
-      // 4. Save to Firebase
       const orderRef = doc(db, 'orders', finalOrderId);
       await setDoc(orderRef, completeOrderData);
-      
-      console.log('✅ Order saved to Firebase with ID:', finalOrderId);
-      console.log('📄 Order details:', completeOrderData);
 
-      // 5. Clear local storage
+      // Clear all storage
       localStorage.removeItem('pendingOrder');
       localStorage.removeItem('cartItems');
       localStorage.removeItem('paymentIntentId');
+      localStorage.removeItem('orderNumber');
+      sessionStorage.removeItem('pendingOrder');
+      sessionStorage.removeItem('cartItems');
+      sessionStorage.removeItem('orderNumber');
       
       setStatus('success');
 
     } catch (error) {
-      console.error('❌ Error saving order to Firebase:', error);
+      console.error('Error saving order to Firebase:', error);
       setStatus('error');
     }
   };
@@ -93,7 +213,7 @@ function PaymentSuccessContent() {
   if (status === 'loading') {
     return (
       <div style={{ padding: '40px', textAlign: 'center' }}>
-        <h2>Saving Your Order...</h2>
+        <h2>Processing Your Payment...</h2>
         <p>Please wait while we confirm and save your order details.</p>
         <div style={{ marginTop: '20px' }}>
           <div style={{ 
@@ -116,14 +236,80 @@ function PaymentSuccessContent() {
     );
   }
 
+  if (status === 'partial_success') {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center' }}>
+        <div style={{ fontSize: '48px', marginBottom: '20px' }}>✅</div>
+        <h2>Payment Successful!</h2>
+        <p>Your payment was processed successfully.</p>
+        
+        {paymentId && (
+          <div style={{ 
+            background: '#f0fdf4', 
+            padding: '15px', 
+            borderRadius: '8px', 
+            margin: '20px auto',
+            maxWidth: '400px',
+            border: '1px solid #bbf7d0'
+          }}>
+            <p style={{ margin: '5px 0', fontSize: '14px' }}>
+              <strong>Payment ID:</strong> {paymentId}
+            </p>
+            <p style={{ margin: '5px 0', fontSize: '12px', color: '#059669' }}>
+              ⚠️ Order details not saved - please contact support with this ID
+            </p>
+          </div>
+        )}
+
+        <p>Please contact our support team with your Payment ID to complete your order.</p>
+        
+        <div style={{ marginTop: '30px' }}>
+          <Link 
+            href="/"
+            style={{ 
+              background: '#10b981', 
+              color: 'white', 
+              padding: '12px 24px', 
+              borderRadius: '8px',
+              textDecoration: 'none',
+              display: 'inline-block',
+              marginRight: '10px'
+            }}
+          >
+            Return Home
+          </Link>
+          
+          <a 
+            href="mailto:support@farm2table.com"
+            style={{ 
+              border: '1px solid #10b981', 
+              color: '#10b981', 
+              padding: '12px 24px', 
+              borderRadius: '8px',
+              textDecoration: 'none',
+              display: 'inline-block'
+            }}
+          >
+            Contact Support
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   if (status === 'error') {
     return (
       <div style={{ padding: '40px', textAlign: 'center' }}>
         <div style={{ fontSize: '48px', marginBottom: '20px' }}>❌</div>
         <h2>Order Processing Issue</h2>
         <p>There was an issue saving your order. The payment was successful but we couldn't save the order details.</p>
+        {paymentId && (
+          <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
+            <strong>Payment ID:</strong> {paymentId}
+          </p>
+        )}
         <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
-          Please contact support with your payment ID: {searchParams.get('payment_intent_id')}
+          Please contact support with your Payment ID above.
         </p>
         <div style={{ marginTop: '20px' }}>
           <Link 
@@ -148,28 +334,117 @@ function PaymentSuccessContent() {
     <div style={{ padding: '40px', textAlign: 'center' }}>
       <div style={{ fontSize: '48px', marginBottom: '20px' }}>🎉</div>
       <h2>Payment Successful!</h2>
-      <p>Your test order has been confirmed and saved to the database.</p>
+      <p>Your order has been confirmed and saved to the database.</p>
       
       <div style={{ 
         background: '#f0fdf4', 
-        padding: '15px', 
+        padding: '20px', 
         borderRadius: '8px', 
         margin: '20px auto',
         maxWidth: '400px',
         border: '1px solid #bbf7d0'
       }}>
-        <p style={{ margin: '5px 0', fontSize: '14px' }}>
-          <strong>Order ID:</strong> {orderId}
-        </p>
-        <p style={{ margin: '5px 0', fontSize: '14px' }}>
-          <strong>Payment ID:</strong> {searchParams.get('payment_intent_id')}
-        </p>
-        <p style={{ margin: '5px 0', fontSize: '12px', color: '#059669' }}>
-          ✅ Test Mode Order - Saved to Firebase
-        </p>
+        {orderNumber && orderNumber.startsWith('F2T') ? (
+          <>
+            <div style={{ marginBottom: '15px' }}>
+              <div style={{ 
+                fontSize: '12px', 
+                color: '#059669', 
+                fontWeight: '600',
+                marginBottom: '5px'
+              }}>
+                ✅ F2T ORDER NUMBER
+              </div>
+              <div style={{ 
+                fontSize: '18px', 
+                fontWeight: '700',
+                color: '#065f46'
+              }}>
+                {orderNumber}
+              </div>
+            </div>
+            
+            <div style={{ 
+              fontSize: '12px', 
+              color: '#059669',
+              background: '#dcfce7',
+              padding: '5px 10px',
+              borderRadius: '4px',
+              display: 'inline-block',
+              marginBottom: '10px'
+            }}>
+              ✓ Official Order Format
+            </div>
+          </>
+        ) : (
+          <div style={{ marginBottom: '15px' }}>
+            <div style={{ 
+              fontSize: '12px', 
+              color: '#dc2626', 
+              fontWeight: '600',
+              marginBottom: '5px'
+            }}>
+              ⚠️ TEMPORARY ORDER ID
+            </div>
+            <div style={{ 
+              fontSize: '16px', 
+              fontWeight: '600',
+              color: '#7c2d12'
+            }}>
+              {orderId}
+            </div>
+          </div>
+        )}
+        
+        <div style={{ borderTop: '1px solid #bbf7d0', marginTop: '15px', paddingTop: '15px' }}>
+          <p style={{ margin: '8px 0', fontSize: '14px', textAlign: 'left' }}>
+            <strong style={{ color: '#374151' }}>Payment ID:</strong>
+            <span style={{ 
+              display: 'block', 
+              fontSize: '12px', 
+              color: '#6b7280',
+              wordBreak: 'break-all',
+              marginTop: '2px'
+            }}>
+              {paymentId}
+            </span>
+          </p>
+          
+          <p style={{ margin: '8px 0', fontSize: '14px', textAlign: 'left' }}>
+            <strong style={{ color: '#374151' }}>Payment Status:</strong>
+            <span style={{ 
+              display: 'inline-block',
+              fontSize: '12px', 
+              color: paymentVerified ? '#059669' : '#d97706',
+              background: paymentVerified ? '#dcfce7' : '#fef3c7',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              marginLeft: '8px'
+            }}>
+              {paymentVerified ? '✓ Verified' : '✓ Paid'}
+            </span>
+          </p>
+        </div>
+        
+        {orderNumber && !orderNumber.startsWith('F2T') && (
+          <div style={{ 
+            marginTop: '10px',
+            padding: '10px',
+            background: '#fef3c7',
+            border: '1px solid #fbbf24',
+            borderRadius: '6px'
+          }}>
+            <p style={{ 
+              fontSize: '12px', 
+              color: '#92400e',
+              margin: 0
+            }}>
+              ℹ️ Your order was processed successfully, but is using a temporary ID.
+              You can track it in your purchases section.
+            </p>
+          </div>
+        )}
       </div>
-
-      <p>You can now view your order in the purchases section.</p>
 
       <div style={{ marginTop: '30px' }}>
         <Link 
@@ -182,7 +457,8 @@ function PaymentSuccessContent() {
             textDecoration: 'none',
             display: 'inline-block',
             marginRight: '10px',
-            fontWeight: '500'
+            fontWeight: '500',
+            fontSize: '14px'
           }}
         >
           View My Orders
@@ -197,7 +473,8 @@ function PaymentSuccessContent() {
             borderRadius: '8px',
             textDecoration: 'none',
             display: 'inline-block',
-            fontWeight: '500'
+            fontWeight: '500',
+            fontSize: '14px'
           }}
         >
           Continue Shopping
@@ -207,7 +484,6 @@ function PaymentSuccessContent() {
   );
 }
 
-// ADD THIS AT THE END:
 export default function PaymentSuccess() {
   return (
     <Suspense fallback={

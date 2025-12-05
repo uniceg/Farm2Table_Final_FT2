@@ -2,7 +2,20 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    const { amount, orderId } = await request.json();
+    // ✅ FIXED: Get orderNumber from request
+    const { amount, orderId, orderNumber } = await request.json();
+    
+    console.log('💰 Creating payment intent:', {
+      orderId,
+      orderNumber,
+      amount
+    });
+    
+    // ✅ ADDED: Validate orderNumber
+    if (!orderNumber || !orderNumber.startsWith('F2T')) {
+      console.warn('⚠️ Order number is not F2T format:', orderNumber);
+      // Still proceed, but this should be fixed upstream
+    }
     
     // Use TEST key for now (switch to LIVE when ready)
     const secretKey = process.env.PAYMONGO_TEST_SECRET_KEY;
@@ -20,9 +33,14 @@ export async function POST(request) {
             currency: 'PHP',
             payment_method_allowed: ['gcash', 'paymaya', 'card'],
             capture_type: 'automatic',
+            // ✅ FIXED: Store BOTH orderId and orderNumber in metadata
             metadata: {
               order_id: orderId,
-            }
+              order_number: orderNumber, // ← ADD THIS LINE
+              source: 'farm2table'
+            },
+            // ✅ ADDED: Description with orderNumber
+            description: `Order ${orderNumber || orderId} - Farm2Table`
           }
         }
       })
