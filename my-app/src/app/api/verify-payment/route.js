@@ -4,113 +4,54 @@ export async function POST(request) {
   try {
     const { paymentIntentId } = await request.json();
 
-    if (!paymentIntentId) {
-      console.error('❌ No paymentIntentId provided');
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Payment intent ID is required',
-          verified: false 
-        },
-        { status: 400 }
-      );
-    }
-
-    console.log('🔍 VERIFYING PAYMENT:', paymentIntentId);
-    
-    // Get Paymongo key - USE TEST KEY
-    const secretKey = process.env.PAYMONGO_TEST_SECRET_KEY;
-    
-    if (!secretKey) {
-      console.error('❌ NO PAYMONGO KEY IN VERIFY-PAYMENT!');
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Payment system configuration error',
-          verified: false 
-        },
-        { status: 500 }
-      );
-    }
-
-    // Create auth
-    const authString = `${secretKey}:`;
+    // ✅ FIXED: Correct authentication format
+    const authString = `${process.env.PAYMONGO_SECRET_KEY}:`;
     const base64Auth = Buffer.from(authString).toString('base64');
 
-    // Call Paymongo API
+    // Verify payment with Paymongo
     const response = await fetch(
       `https://api.paymongo.com/v1/payment_intents/${paymentIntentId}`,
       {
         headers: {
-          'Authorization': `Basic ${base64Auth}`,
+          'Authorization': `Basic ${base64Auth}`, // ✅ FIXED
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
         },
-        cache: 'no-store'
       }
     );
 
     if (!response.ok) {
-      console.error('❌ PAYMONGO VERIFICATION FAILED:', {
-        status: response.status,
-        statusText: response.statusText
-      });
-      
-      // Return partial data even if verification fails
-      return NextResponse.json({
-        success: false,
-        verified: false,
-        paymentIntentId: paymentIntentId,
-        error: `Verification failed (${response.status})`,
-        status: 'unverified'
-      });
+      // Get more details about the error
+      const errorText = await response.text();
+      console.error('PayMongo API error:', response.status, errorText);
+      throw new Error(`PayMongo API error: ${response.status} - ${errorText}`);
     }
 
     const paymentData = await response.json();
     
-    console.log('✅ PAYMENT VERIFIED:', {
-      id: paymentData.data.id,
+    console.log('✅ Payment verification successful:', {
+      paymentIntentId,
       status: paymentData.data.attributes.status,
-      amount: paymentData.data.attributes.amount
+      hasMetadata: !!paymentData.data.attributes.metadata
     });
     
-    // Extract data
+    // ✅ ADDED: Extract orderNumber from metadata
     const metadata = paymentData.data.attributes.metadata || {};
-    let orderData = {};
-    
-    try {
-      if (metadata.order_data) {
-        orderData = JSON.parse(metadata.order_data);
-      }
-    } catch (e) {
-      console.log('Could not parse order_data from metadata');
-    }
+    const orderNumber = metadata.order_number;
     
     return NextResponse.json({
-      success: true,
-      verified: true,
-      paymentIntentId: paymentIntentId,
       status: paymentData.data.attributes.status,
+      payment_method: paymentData.data.attributes.payment_method_allowed?.[0] || 'card',
       amount: paymentData.data.attributes.amount,
       currency: paymentData.data.attributes.currency,
-      orderNumber: metadata.order_number || paymentData.data.attributes.metadata?.order_number,
-      metadata: metadata,
-      orderData: orderData,
-      paymentMethod: paymentData.data.attributes.payment_method_allowed?.[0] || 'unknown',
-      lastPaymentError: paymentData.data.attributes.last_payment_error,
-      livemode: paymentData.data.attributes.livemode,
-      created: paymentData.data.attributes.created_at
+      // ✅ ADDED: Return orderNumber from metadata
+      orderNumber: orderNumber,
+      metadata: metadata
     });
 
   } catch (error) {
-    console.error('❌ PAYMENT VERIFICATION ERROR:', error);
+    console.error('Payment verification error:', error);
     return NextResponse.json(
-      { 
-        success: false,
-        verified: false,
-        error: error.message,
-        message: 'Payment verification failed'
-      },
+      { error: error.message || 'Failed to verify payment' },
       { status: 500 }
     );
   }
