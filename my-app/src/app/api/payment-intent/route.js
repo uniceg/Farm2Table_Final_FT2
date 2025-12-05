@@ -5,52 +5,62 @@ export async function POST(request) {
     // Get order data from request
     const { amount, orderId, orderNumber, orderData } = await request.json();
     
-    console.log('💰 Creating payment intent:', {
+    console.log('💰 PAYMENT INTENT REQUEST:', {
       orderId,
       orderNumber,
       amount,
       hasOrderData: !!orderData,
-      timestamp: new Date().toISOString()
+      time: new Date().toISOString()
     });
     
     // Validate orderNumber
     let finalOrderNumber = orderNumber;
     if (!finalOrderNumber || !finalOrderNumber.startsWith('F2T')) {
-      console.warn('⚠️ Order number is not F2T format:', finalOrderNumber);
-      // Generate a proper one if missing
       const timestamp = Date.now();
       const random = Math.random().toString(36).substr(2, 6).toUpperCase();
       finalOrderNumber = `F2T-${timestamp}-${random}`;
-      console.log('Generated new order number:', finalOrderNumber);
+      console.log('Generated order number:', finalOrderNumber);
     }
     
-    // Use TEST key for now (switch to LIVE when ready)
+    // Get Paymongo key - FORCE TEST KEY FOR NOW
     const secretKey = process.env.PAYMONGO_TEST_SECRET_KEY;
     
     if (!secretKey) {
-      throw new Error('Paymongo secret key is not configured');
+      console.error('❌ NO PAYMONGO TEST KEY FOUND!');
+      return NextResponse.json(
+        { error: 'Paymongo test key not configured. Set PAYMONGO_TEST_SECRET_KEY in Vercel.' },
+        { status: 500 }
+      );
     }
     
-    // ✅ CRITICAL: Add timestamp to prevent ANY caching
+    console.log('✅ Using Paymongo TEST key');
+    
+    // ✅✅✅ HARDCODE VERCEL URL - NO LOCALHOST EVER! ✅✅✅
+    const VERCEL_URL = 'https://farm2-table-final-ft-2.vercel.app';
     const timestamp = Date.now();
-    const returnUrl = `https://farm2-table-final-ft-2.vercel.app/payment-success?t=${timestamp}&src=paymongo`;
+    const randomParam = Math.random().toString(36).substr(2, 8);
+    const returnUrl = `${VERCEL_URL}/payment-success?t=${timestamp}&r=${randomParam}&src=vercel`;
     
-    console.log('🚀 Using FRESH return URL:', returnUrl);
+    console.log('🚀 FORCED VERCEL RETURN URL:', returnUrl);
     
-    // Prepare metadata with ALL order data
+    // Prepare metadata with ALL data
     const metadata = {
       order_id: orderId,
       order_number: finalOrderNumber,
-      order_data: JSON.stringify(orderData || { 
-        orderId, 
-        orderNumber: finalOrderNumber, 
-        amount,
-        timestamp: new Date().toISOString()
+      order_data: JSON.stringify({
+        orderId: orderId,
+        orderNumber: finalOrderNumber,
+        amount: amount,
+        timestamp: new Date().toISOString(),
+        items: orderData?.items || [],
+        buyerInfo: orderData?.buyerInfo || {},
+        shippingAddress: orderData?.shippingAddress || {}
       }),
-      source: 'farm2table_v2',
+      source: 'farm2table_production',
       created_at: new Date().toISOString(),
-      version: '2.0',
-      return_url: returnUrl // Also store in metadata for debugging
+      version: '3.0',
+      forced_redirect: 'vercel_only',
+      environment: 'production'
     };
     
     const response = await fetch('https://api.paymongo.com/v1/payment_intents', {
@@ -58,7 +68,6 @@ export async function POST(request) {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Basic ' + Buffer.from(secretKey + ':').toString('base64'),
-        'User-Agent': 'Farm2Table/1.0'
       },
       body: JSON.stringify({
         data: {
@@ -68,71 +77,55 @@ export async function POST(request) {
             payment_method_allowed: ['gcash', 'paymaya', 'card'],
             capture_type: 'automatic',
             metadata: metadata,
-            description: `Order ${finalOrderNumber} - Farm2Table`,
-            // ✅ CRITICAL: Use timestamped URL to prevent caching
-            return_url: returnUrl
+            description: `Farm2Table Order ${finalOrderNumber}`,
+            // ✅✅✅ FORCE VERCEL URL - NO LOCALHOST
+            return_url: returnUrl,
+            statement_descriptor: 'FARM2TABLE'
           }
         }
       })
     });
 
-    const responseText = await response.text();
-    let data;
-    
-    try {
-      data = JSON.parse(responseText);
-    } catch (e) {
-      console.error('Failed to parse Paymongo response:', responseText);
-      throw new Error('Invalid response from Paymongo API');
-    }
+    const data = await response.json();
     
     if (!response.ok) {
-      console.error('❌ Paymongo API error:', {
+      console.error('❌ PAYMONGO ERROR:', {
         status: response.status,
-        statusText: response.statusText,
-        error: data.errors || responseText
+        error: data.errors
       });
-      
-      // More specific error messages
-      let errorMsg = 'Failed to create payment intent';
-      if (data.errors && data.errors[0]) {
-        errorMsg = `${data.errors[0].detail} (code: ${data.errors[0].code})`;
-      } else if (response.status === 401) {
-        errorMsg = 'Invalid Paymongo API credentials';
-      }
-      
-      throw new Error(errorMsg);
+      throw new Error(data.errors?.[0]?.detail || 'Paymongo API error');
     }
 
-    console.log('✅ Payment intent created SUCCESSFULLY:', {
-      paymentIntentId: data.data.id,
+    console.log('✅ PAYMENT INTENT CREATED:', {
+      id: data.data.id,
       orderNumber: finalOrderNumber,
       amount: amount,
       returnUrl: returnUrl,
-      metadata: metadata,
-      paymentIntent: data.data.attributes
+      checkoutUrl: data.data.attributes.next_action?.redirect?.url || 'No checkout URL'
     });
 
     return NextResponse.json({
-      ...data,
-      // Add debugging information
+      success: true,
+      clientKey: data.data.attributes.client_key,
+      id: data.data.id,
+      amount: data.data.attributes.amount,
+      returnUrl: returnUrl,
+      orderNumber: finalOrderNumber,
+      // For mobile/redirect
+      checkoutUrl: data.data.attributes.next_action?.redirect?.url,
       _debug: {
-        orderNumber: finalOrderNumber,
-        returnUrl: returnUrl,
-        timestamp: timestamp,
-        metadataKeys: Object.keys(metadata),
-        success: true
+        forcedVercelUrl: returnUrl,
+        timestamp: timestamp
       }
     });
     
   } catch (error) {
-    console.error('❌ Payment intent creation FAILED:', error);
+    console.error('❌ PAYMENT INTENT CREATION FAILED:', error);
     return NextResponse.json(
       { 
         success: false,
         error: error.message,
-        details: 'Check Paymongo configuration and network connection',
-        timestamp: new Date().toISOString()
+        message: 'Payment system error. Please try again or contact support.'
       },
       { status: 500 }
     );

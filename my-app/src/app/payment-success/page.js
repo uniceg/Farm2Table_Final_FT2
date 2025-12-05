@@ -13,23 +13,61 @@ function PaymentSuccessContent() {
   const [orderNumber, setOrderNumber] = useState('');
   const [paymentVerified, setPaymentVerified] = useState(false);
   const [paymentId, setPaymentId] = useState('');
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
+    console.log('=== PAYMENT SUCCESS PAGE LOADED ===');
+    
+    // ✅✅✅ FORCE CHECK FOR LOCALHOST - AUTO REDIRECT ✅✅✅
+    if (typeof window !== 'undefined') {
+      const currentUrl = window.location.href;
+      const isLocalhost = currentUrl.includes('localhost') || 
+                         currentUrl.includes('127.0.0.1') || 
+                         currentUrl.includes('://localhost');
+      
+      if (isLocalhost) {
+        console.log('🚨 LOCALHOST DETECTED! Redirecting to Vercel...');
+        
+        // Get payment ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const paymentIntentId = urlParams.get('payment_intent_id') || 
+                               urlParams.get('pi') ||
+                               urlParams.get('payment_id');
+        
+        if (paymentIntentId) {
+          const vercelUrl = `https://farm2-table-final-ft-2.vercel.app/payment-success?payment_intent_id=${paymentIntentId}&redirected=1`;
+          console.log('🔀 Redirecting to:', vercelUrl);
+          window.location.href = vercelUrl;
+          return; // Stop execution
+        }
+      }
+    }
+
+    // Get payment intent ID from URL
     const paymentIntentId = searchParams.get('payment_intent_id') || 
                            searchParams.get('pi') ||
-                           searchParams.get('payment_id');
+                           searchParams.get('payment_id') ||
+                           searchParams.get('payment_intent');
+    
+    console.log('Payment ID from URL:', paymentIntentId);
+    console.log('All URL params:', Array.from(searchParams.entries()));
+    
+    if (!paymentIntentId) {
+      console.error('❌ NO PAYMENT ID IN URL');
+      setMessage('No payment information found. Please check your payment confirmation.');
+      setStatus('error');
+      return;
+    }
     
     setPaymentId(paymentIntentId);
+    saveOrderToFirebase(paymentIntentId);
     
-    if (paymentIntentId) {
-      saveOrderToFirebase(paymentIntentId);
-    } else {
-      setStatus('error');
-    }
   }, [searchParams]);
 
   const verifyPaymentWithPayMongo = async (paymentIntentId) => {
     try {
+      console.log('🔍 Verifying payment:', paymentIntentId);
+      
       const response = await fetch('/api/verify-payment', {
         method: 'POST',
         headers: {
@@ -38,260 +76,225 @@ function PaymentSuccessContent() {
         body: JSON.stringify({ paymentIntentId })
       });
 
+      const data = await response.json();
+      
       if (!response.ok) {
+        console.warn('Verification API error:', data);
         return null;
       }
 
-      return await response.json();
+      console.log('✅ Verification response:', data);
+      return data;
+      
     } catch (error) {
-      console.warn('Payment verification request failed');
+      console.warn('Verification request failed:', error);
       return null;
     }
   };
 
+  const generateOrderNumber = () => {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substr(2, 6).toUpperCase();
+    return `F2T-${timestamp}-${random}`;
+  };
+
   const saveOrderToFirebase = async (paymentIntentId) => {
     try {
-      console.log('💾 Attempting to save order... Payment ID:', paymentIntentId);
+      console.log('💾 SAVING ORDER TO FIREBASE...');
       
-      // MULTIPLE DATA SOURCES STRATEGY:
-      let pendingOrderData = null;
-      let cartItems = null;
-      let storedOrderNumber = null;
-      
-      // 1. Try sessionStorage first (survives redirects better)
-      pendingOrderData = sessionStorage.getItem('pendingOrder');
-      cartItems = sessionStorage.getItem('cartItems');
-      storedOrderNumber = sessionStorage.getItem('orderNumber');
-      
-      console.log('sessionStorage data:', {
-        hasOrder: !!pendingOrderData,
-        hasCart: !!cartItems,
-        hasOrderNumber: !!storedOrderNumber
-      });
-      
-      // 2. Try localStorage as fallback
-      if (!pendingOrderData) {
-        pendingOrderData = localStorage.getItem('pendingOrder');
-        cartItems = localStorage.getItem('cartItems');
-        storedOrderNumber = localStorage.getItem('orderNumber');
-        
-        console.log('localStorage data:', {
-          hasOrder: !!pendingOrderData,
-          hasCart: !!cartItems,
-          hasOrderNumber: !!storedOrderNumber
-        });
-      }
-      
-      // 3. Try URL parameters
-      const urlOrder = searchParams.get('order_data');
-      if (!pendingOrderData && urlOrder) {
-        try {
-          pendingOrderData = decodeURIComponent(urlOrder);
-          console.log('Found order data in URL parameters');
-        } catch (e) {
-          console.log('Could not decode URL order data');
-        }
-      }
-      
-      // 4. If still no data, check if we can retrieve from payment metadata
-      if (!pendingOrderData) {
-        console.warn('⚠️ No order data found in storage or URL');
-        console.log('Available search params:', Array.from(searchParams.entries()));
-        
-        // Try to verify payment and get metadata
-        try {
-          const paymentDetails = await verifyPaymentWithPayMongo(paymentIntentId);
-          if (paymentDetails?.metadata?.order_data) {
-            pendingOrderData = paymentDetails.metadata.order_data;
-            console.log('Retrieved order data from payment metadata');
-          }
-        } catch (metadataError) {
-          console.log('Could not retrieve from metadata:', metadataError);
-        }
-      }
-      
-      // 5. If STILL no data, show partial success instead of error
-      if (!pendingOrderData) {
-        console.error('❌ No order data found in any source');
-        console.log('Payment was successful, but order data lost');
-        
-        // Instead of error, show partial success
-        setStatus('partial_success');
-        
-        // Clear all storage to prevent future issues
-        localStorage.removeItem('pendingOrder');
-        localStorage.removeItem('cartItems');
-        localStorage.removeItem('orderNumber');
-        sessionStorage.removeItem('pendingOrder');
-        sessionStorage.removeItem('cartItems');
-        sessionStorage.removeItem('orderNumber');
-        
-        return;
-      }
-
-      const orderData = JSON.parse(pendingOrderData);
-      const items = cartItems ? JSON.parse(cartItems) : [];
-
-      let verifiedOrderNumber = storedOrderNumber;
+      // Step 1: Verify payment with Paymongo
       let paymentDetails = null;
-      let verificationSuccess = false;
+      let metadataOrderData = null;
       
       try {
         paymentDetails = await verifyPaymentWithPayMongo(paymentIntentId);
         
-        if (paymentDetails) {
-          verificationSuccess = true;
+        if (paymentDetails?.verified) {
           setPaymentVerified(true);
+          console.log('✅ Payment verified by Paymongo');
           
-          const metadataOrderNumber = paymentDetails.orderNumber || 
-                                     paymentDetails.metadata?.order_number;
-          
-          if (metadataOrderNumber) {
-            verifiedOrderNumber = metadataOrderNumber;
+          // Try to get order data from metadata
+          if (paymentDetails.metadata?.order_data) {
+            try {
+              metadataOrderData = JSON.parse(paymentDetails.metadata.order_data);
+              console.log('✅ Found order data in payment metadata');
+            } catch (e) {
+              console.log('Could not parse metadata order_data');
+            }
           }
-          
-          if (orderData.orderNumber && orderData.orderNumber.startsWith('F2T')) {
-            verifiedOrderNumber = orderData.orderNumber;
-          }
+        } else {
+          console.log('⚠️ Payment not verified by Paymongo, but proceeding...');
         }
       } catch (verifyError) {
-        // Continue anyway - payment is still successful
+        console.log('Verification failed, continuing:', verifyError);
       }
 
-      const finalOrderNumber = verifiedOrderNumber || 
-                              orderData.orderNumber || 
-                              storedOrderNumber || 
-                              `TEST-${Date.now()}`;
+      // Step 2: Try to get order data from browser storage
+      let storageOrderData = null;
+      let cartItems = [];
+      
+      // Try sessionStorage first
+      const sessionOrder = sessionStorage.getItem('pendingOrder');
+      const sessionCart = sessionStorage.getItem('cartItems');
+      
+      // Try localStorage second
+      const localOrder = localStorage.getItem('pendingOrder');
+      const localCart = localStorage.getItem('cartItems');
+      
+      if (sessionOrder) {
+        try {
+          storageOrderData = JSON.parse(sessionOrder);
+          cartItems = sessionCart ? JSON.parse(sessionCart) : [];
+          console.log('✅ Found order in sessionStorage');
+        } catch (e) {
+          console.error('Failed to parse sessionStorage data');
+        }
+      } else if (localOrder) {
+        try {
+          storageOrderData = JSON.parse(localOrder);
+          cartItems = localCart ? JSON.parse(localCart) : [];
+          console.log('✅ Found order in localStorage');
+        } catch (e) {
+          console.error('Failed to parse localStorage data');
+        }
+      }
+      
+      // Step 3: Determine final order data
+      let finalOrderData = metadataOrderData || storageOrderData;
+      
+      if (!finalOrderData) {
+        console.error('❌ NO ORDER DATA FOUND ANYWHERE');
+        setMessage('Payment successful but order details missing. Please contact support with your Payment ID.');
+        setStatus('partial_success');
+        return;
+      }
+      
+      // Step 4: Generate order number
+      const finalOrderNumber = paymentDetails?.orderNumber || 
+                              paymentDetails?.metadata?.order_number ||
+                              finalOrderData.orderNumber ||
+                              generateOrderNumber();
       
       setOrderNumber(finalOrderNumber);
+      console.log('📝 Order Number:', finalOrderNumber);
 
+      // Step 5: Prepare complete order document
       const completeOrderData = {
-        ...orderData,
-        items: items,
+        // Base order data
+        ...finalOrderData,
+        // Items
+        items: cartItems.length > 0 ? cartItems : finalOrderData.items || [],
+        // Payment info
         paymentStatus: 'paid',
         paymentIntentId: paymentIntentId,
-        paymentMethod: verificationSuccess ? (paymentDetails?.payment_method || 'digital_payment') : 'digital_payment',
+        paymentMethod: paymentDetails?.paymentMethod || 'digital_payment',
+        paymentAmount: paymentDetails?.amount ? paymentDetails.amount / 100 : finalOrderData.totalAmount || 0,
+        // Order info
         status: 'confirmed',
         orderNumber: finalOrderNumber,
+        // Timestamps
         paidAt: serverTimestamp(),
+        confirmedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        paymentVerified: verificationSuccess,
+        // Verification info
+        paymentVerified: !!paymentDetails?.verified,
         paymentVerificationData: paymentDetails,
-        isTestOrder: process.env.NODE_ENV === 'development',
-        buyerInfo: orderData.buyerInfo || {
+        // Buyer info
+        buyerInfo: finalOrderData.buyerInfo || {
           name: 'Customer',
           email: 'customer@example.com'
-        }
+        },
+        // Shipping
+        shippingAddress: finalOrderData.shippingAddress || finalOrderData.address || {},
+        // System info
+        isTestOrder: !paymentDetails?.livemode,
+        environment: 'production',
+        source: 'vercel_payment_success'
       };
 
-      const finalOrderId = finalOrderNumber.startsWith('F2T') ? 
-                          finalOrderNumber : 
-                          orderData.id || `order_${Date.now()}`;
-      
+      // Step 6: Save to Firebase
+      const finalOrderId = finalOrderNumber;
       setOrderId(finalOrderId);
+      
+      console.log('🔥 Saving to Firebase:', {
+        orderId: finalOrderId,
+        orderNumber: finalOrderNumber,
+        itemsCount: completeOrderData.items.length
+      });
       
       const orderRef = doc(db, 'orders', finalOrderId);
       await setDoc(orderRef, completeOrderData);
+      
+      console.log('✅ ORDER SAVED TO FIREBASE SUCCESSFULLY!');
 
-      // Clear all storage
+      // Step 7: Clear storage
       localStorage.removeItem('pendingOrder');
       localStorage.removeItem('cartItems');
-      localStorage.removeItem('paymentIntentId');
       localStorage.removeItem('orderNumber');
       sessionStorage.removeItem('pendingOrder');
       sessionStorage.removeItem('cartItems');
       sessionStorage.removeItem('orderNumber');
       
+      // Step 8: Update UI
       setStatus('success');
+      setMessage('Order confirmed and saved successfully!');
 
     } catch (error) {
-      console.error('Error saving order to Firebase:', error);
+      console.error('❌ FIREBASE SAVE ERROR:', error);
+      setMessage('Error saving order: ' + error.message);
       setStatus('error');
     }
   };
 
+  // ========== RENDER FUNCTIONS ==========
+
   if (status === 'loading') {
     return (
-      <div style={{ padding: '40px', textAlign: 'center' }}>
-        <h2>Processing Your Payment...</h2>
-        <p>Please wait while we confirm and save your order details.</p>
-        <div style={{ marginTop: '20px' }}>
-          <div style={{ 
-            width: '40px', 
-            height: '40px', 
-            border: '4px solid #f3f3f3', 
-            borderTop: '4px solid #10b981', 
-            borderRadius: '50%', 
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto'
-          }}></div>
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <h2 style={styles.title}>Processing Payment...</h2>
+          <p style={styles.text}>Please wait while we confirm your payment and save your order.</p>
+          <div style={styles.spinner}></div>
+          {paymentId && (
+            <div style={styles.paymentIdBox}>
+              <small>Payment ID: {paymentId}</small>
+            </div>
+          )}
         </div>
-        <style jsx>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
       </div>
     );
   }
 
   if (status === 'partial_success') {
     return (
-      <div style={{ padding: '40px', textAlign: 'center' }}>
-        <div style={{ fontSize: '48px', marginBottom: '20px' }}>✅</div>
-        <h2>Payment Successful!</h2>
-        <p>Your payment was processed successfully.</p>
-        
-        {paymentId && (
-          <div style={{ 
-            background: '#f0fdf4', 
-            padding: '15px', 
-            borderRadius: '8px', 
-            margin: '20px auto',
-            maxWidth: '400px',
-            border: '1px solid #bbf7d0'
-          }}>
-            <p style={{ margin: '5px 0', fontSize: '14px' }}>
-              <strong>Payment ID:</strong> {paymentId}
-            </p>
-            <p style={{ margin: '5px 0', fontSize: '12px', color: '#059669' }}>
-              ⚠️ Order details not saved - please contact support with this ID
-            </p>
-          </div>
-        )}
-
-        <p>Please contact our support team with your Payment ID to complete your order.</p>
-        
-        <div style={{ marginTop: '30px' }}>
-          <Link 
-            href="/"
-            style={{ 
-              background: '#10b981', 
-              color: 'white', 
-              padding: '12px 24px', 
-              borderRadius: '8px',
-              textDecoration: 'none',
-              display: 'inline-block',
-              marginRight: '10px'
-            }}
-          >
-            Return Home
-          </Link>
+      <div style={styles.container}>
+        <div style={{...styles.card, borderColor: '#fbbf24'}}>
+          <div style={styles.icon}>⚠️</div>
+          <h2 style={styles.title}>Payment Successful!</h2>
+          <p style={styles.text}>Your payment was processed, but we need more information.</p>
           
-          <a 
-            href="mailto:support@farm2table.com"
-            style={{ 
-              border: '1px solid #10b981', 
-              color: '#10b981', 
-              padding: '12px 24px', 
-              borderRadius: '8px',
-              textDecoration: 'none',
-              display: 'inline-block'
-            }}
-          >
-            Contact Support
-          </a>
+          {paymentId && (
+            <div style={styles.infoBox}>
+              <div style={styles.infoItem}>
+                <strong>Payment ID:</strong>
+                <code style={styles.code}>{paymentId}</code>
+              </div>
+              <div style={styles.warningBox}>
+                ⚠️ Please save this Payment ID and contact support
+              </div>
+            </div>
+          )}
+
+          <p style={styles.text}>{message}</p>
+          
+          <div style={styles.buttonGroup}>
+            <Link href="/" style={styles.primaryButton}>
+              Return Home
+            </Link>
+            <a href="mailto:support@farm2table.com" style={styles.secondaryButton}>
+              Contact Support
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -299,200 +302,297 @@ function PaymentSuccessContent() {
 
   if (status === 'error') {
     return (
-      <div style={{ padding: '40px', textAlign: 'center' }}>
-        <div style={{ fontSize: '48px', marginBottom: '20px' }}>❌</div>
-        <h2>Order Processing Issue</h2>
-        <p>There was an issue saving your order. The payment was successful but we couldn't save the order details.</p>
-        {paymentId && (
-          <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
-            <strong>Payment ID:</strong> {paymentId}
-          </p>
-        )}
-        <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
-          Please contact support with your Payment ID above.
-        </p>
-        <div style={{ marginTop: '20px' }}>
-          <Link 
-            href="/"
-            style={{ 
-              background: '#10b981', 
-              color: 'white', 
-              padding: '12px 24px', 
-              borderRadius: '8px',
-              textDecoration: 'none',
-              display: 'inline-block'
-            }}
-          >
-            Return to Home
-          </Link>
+      <div style={styles.container}>
+        <div style={{...styles.card, borderColor: '#ef4444'}}>
+          <div style={styles.icon}>❌</div>
+          <h2 style={styles.title}>Processing Issue</h2>
+          <p style={styles.text}>{message || 'There was an issue processing your order.'}</p>
+          
+          {paymentId && (
+            <div style={styles.infoBox}>
+              <div style={styles.infoItem}>
+                <strong>Payment ID:</strong>
+                <code style={styles.code}>{paymentId}</code>
+              </div>
+              <p style={{...styles.text, fontSize: '14px', marginTop: '10px'}}>
+                Please contact support with this ID.
+              </p>
+            </div>
+          )}
+          
+          <div style={styles.buttonGroup}>
+            <Link href="/" style={styles.primaryButton}>
+              Return Home
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
+  // SUCCESS STATE
   return (
-    <div style={{ padding: '40px', textAlign: 'center' }}>
-      <div style={{ fontSize: '48px', marginBottom: '20px' }}>🎉</div>
-      <h2>Payment Successful!</h2>
-      <p>Your order has been confirmed and saved to the database.</p>
-      
-      <div style={{ 
-        background: '#f0fdf4', 
-        padding: '20px', 
-        borderRadius: '8px', 
-        margin: '20px auto',
-        maxWidth: '400px',
-        border: '1px solid #bbf7d0'
-      }}>
-        {orderNumber && orderNumber.startsWith('F2T') ? (
-          <>
-            <div style={{ marginBottom: '15px' }}>
-              <div style={{ 
-                fontSize: '12px', 
-                color: '#059669', 
-                fontWeight: '600',
-                marginBottom: '5px'
-              }}>
-                ✅ F2T ORDER NUMBER
-              </div>
-              <div style={{ 
-                fontSize: '18px', 
-                fontWeight: '700',
-                color: '#065f46'
-              }}>
-                {orderNumber}
-              </div>
-            </div>
-            
-            <div style={{ 
-              fontSize: '12px', 
-              color: '#059669',
-              background: '#dcfce7',
-              padding: '5px 10px',
-              borderRadius: '4px',
-              display: 'inline-block',
-              marginBottom: '10px'
-            }}>
-              ✓ Official Order Format
-            </div>
-          </>
-        ) : (
-          <div style={{ marginBottom: '15px' }}>
-            <div style={{ 
-              fontSize: '12px', 
-              color: '#dc2626', 
-              fontWeight: '600',
-              marginBottom: '5px'
-            }}>
-              ⚠️ TEMPORARY ORDER ID
-            </div>
-            <div style={{ 
-              fontSize: '16px', 
-              fontWeight: '600',
-              color: '#7c2d12'
-            }}>
-              {orderId}
-            </div>
-          </div>
-        )}
+    <div style={styles.container}>
+      <div style={styles.card}>
+        <div style={styles.icon}>🎉</div>
+        <h2 style={styles.title}>Payment Successful!</h2>
+        <p style={styles.text}>Your order has been confirmed and saved.</p>
         
-        <div style={{ borderTop: '1px solid #bbf7d0', marginTop: '15px', paddingTop: '15px' }}>
-          <p style={{ margin: '8px 0', fontSize: '14px', textAlign: 'left' }}>
-            <strong style={{ color: '#374151' }}>Payment ID:</strong>
-            <span style={{ 
-              display: 'block', 
-              fontSize: '12px', 
-              color: '#6b7280',
-              wordBreak: 'break-all',
-              marginTop: '2px'
-            }}>
-              {paymentId}
-            </span>
-          </p>
+        <div style={styles.orderBox}>
+          {orderNumber && orderNumber.startsWith('F2T') ? (
+            <>
+              <div style={styles.orderNumberSection}>
+                <div style={styles.orderLabel}>✅ F2T ORDER NUMBER</div>
+                <div style={styles.orderNumber}>{orderNumber}</div>
+                <div style={styles.badge}>✓ Official Order</div>
+              </div>
+            </>
+          ) : (
+            <div style={styles.orderNumberSection}>
+              <div style={{...styles.orderLabel, color: '#dc2626'}}>⚠️ TEMPORARY ORDER ID</div>
+              <div style={{...styles.orderNumber, color: '#7c2d12', fontSize: '18px'}}>{orderId}</div>
+            </div>
+          )}
           
-          <p style={{ margin: '8px 0', fontSize: '14px', textAlign: 'left' }}>
-            <strong style={{ color: '#374151' }}>Payment Status:</strong>
-            <span style={{ 
-              display: 'inline-block',
-              fontSize: '12px', 
-              color: paymentVerified ? '#059669' : '#d97706',
-              background: paymentVerified ? '#dcfce7' : '#fef3c7',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              marginLeft: '8px'
-            }}>
-              {paymentVerified ? '✓ Verified' : '✓ Paid'}
-            </span>
-          </p>
-        </div>
-        
-        {orderNumber && !orderNumber.startsWith('F2T') && (
-          <div style={{ 
-            marginTop: '10px',
-            padding: '10px',
-            background: '#fef3c7',
-            border: '1px solid #fbbf24',
-            borderRadius: '6px'
-          }}>
-            <p style={{ 
-              fontSize: '12px', 
-              color: '#92400e',
-              margin: 0
-            }}>
-              ℹ️ Your order was processed successfully, but is using a temporary ID.
-              You can track it in your purchases section.
-            </p>
+          <div style={styles.paymentDetails}>
+            <div style={styles.detailRow}>
+              <strong>Payment ID:</strong>
+              <code style={{...styles.code, marginLeft: '10px'}}>{paymentId}</code>
+            </div>
+            <div style={styles.detailRow}>
+              <strong>Status:</strong>
+              <span style={{
+                ...styles.statusBadge,
+                backgroundColor: paymentVerified ? '#dcfce7' : '#fef3c7',
+                color: paymentVerified ? '#059669' : '#d97706'
+              }}>
+                {paymentVerified ? '✓ Verified' : '✓ Paid'}
+              </span>
+            </div>
           </div>
-        )}
-      </div>
+          
+          {orderNumber && !orderNumber.startsWith('F2T') && (
+            <div style={styles.noteBox}>
+              ℹ️ Using temporary ID. Track in your purchases section.
+            </div>
+          )}
+        </div>
 
-      <div style={{ marginTop: '30px' }}>
-        <Link 
-          href="/buyer/profile/my-purchases"
-          style={{ 
-            background: '#10b981', 
-            color: 'white', 
-            padding: '12px 24px', 
-            borderRadius: '8px',
-            textDecoration: 'none',
-            display: 'inline-block',
-            marginRight: '10px',
-            fontWeight: '500',
-            fontSize: '14px'
-          }}
-        >
-          View My Orders
-        </Link>
-
-        <Link 
-          href="/buyer/marketplace"
-          style={{ 
-            border: '1px solid #10b981', 
-            color: '#10b981', 
-            padding: '12px 24px', 
-            borderRadius: '8px',
-            textDecoration: 'none',
-            display: 'inline-block',
-            fontWeight: '500',
-            fontSize: '14px'
-          }}
-        >
-          Continue Shopping
-        </Link>
+        <div style={styles.buttonGroup}>
+          <Link href="/buyer/profile/my-purchases" style={styles.primaryButton}>
+            View My Orders
+          </Link>
+          <Link href="/buyer/marketplace" style={styles.secondaryButton}>
+            Continue Shopping
+          </Link>
+        </div>
       </div>
     </div>
   );
 }
 
+// Styles
+const styles = {
+  container: {
+    padding: '40px 20px',
+    textAlign: 'center',
+    maxWidth: '600px',
+    margin: '0 auto',
+    minHeight: '70vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  card: {
+    width: '100%',
+    background: 'white',
+    padding: '40px',
+    borderRadius: '12px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+    border: '2px solid #10b981'
+  },
+  icon: {
+    fontSize: '48px',
+    marginBottom: '20px'
+  },
+  title: {
+    color: '#1f2937',
+    marginBottom: '10px',
+    fontSize: '28px'
+  },
+  text: {
+    color: '#6b7280',
+    marginBottom: '30px',
+    fontSize: '16px',
+    lineHeight: '1.5'
+  },
+  spinner: {
+    width: '50px',
+    height: '50px',
+    border: '4px solid #f3f3f3',
+    borderTop: '4px solid #10b981',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
+    margin: '20px auto'
+  },
+  paymentIdBox: {
+    marginTop: '20px',
+    padding: '10px',
+    background: '#f8f9fa',
+    borderRadius: '6px',
+    fontFamily: 'monospace',
+    fontSize: '12px',
+    wordBreak: 'break-all'
+  },
+  infoBox: {
+    background: '#f0fdf4',
+    padding: '20px',
+    borderRadius: '8px',
+    margin: '20px auto',
+    border: '1px solid #bbf7d0',
+    textAlign: 'left'
+  },
+  infoItem: {
+    margin: '10px 0'
+  },
+  code: {
+    display: 'block',
+    fontFamily: 'monospace',
+    fontSize: '12px',
+    color: '#6b7280',
+    wordBreak: 'break-all',
+    background: '#f8f9fa',
+    padding: '8px',
+    borderRadius: '4px',
+    marginTop: '5px'
+  },
+  warningBox: {
+    color: '#92400e',
+    fontSize: '12px',
+    marginTop: '10px',
+    padding: '8px',
+    background: '#fef3c7',
+    borderRadius: '4px',
+    border: '1px solid #fbbf24'
+  },
+  orderBox: {
+    background: '#f0fdf4',
+    padding: '20px',
+    borderRadius: '8px',
+    margin: '20px auto',
+    border: '1px solid #bbf7d0'
+  },
+  orderNumberSection: {
+    marginBottom: '20px'
+  },
+  orderLabel: {
+    fontSize: '12px',
+    color: '#059669',
+    fontWeight: '600',
+    marginBottom: '5px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px'
+  },
+  orderNumber: {
+    fontSize: '24px',
+    fontWeight: '700',
+    color: '#065f46',
+    margin: '10px 0'
+  },
+  badge: {
+    display: 'inline-block',
+    fontSize: '12px',
+    color: '#059669',
+    background: '#dcfce7',
+    padding: '4px 12px',
+    borderRadius: '20px',
+    marginTop: '5px'
+  },
+  paymentDetails: {
+    borderTop: '1px solid #bbf7d0',
+    marginTop: '20px',
+    paddingTop: '20px'
+  },
+  detailRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    margin: '12px 0',
+    flexWrap: 'wrap'
+  },
+  statusBadge: {
+    display: 'inline-block',
+    fontSize: '12px',
+    padding: '4px 12px',
+    borderRadius: '20px',
+    marginLeft: '10px'
+  },
+  noteBox: {
+    marginTop: '15px',
+    padding: '12px',
+    background: '#fef3c7',
+    border: '1px solid #fbbf24',
+    borderRadius: '6px',
+    fontSize: '12px',
+    color: '#92400e'
+  },
+  buttonGroup: {
+    display: 'flex',
+    gap: '15px',
+    justifyContent: 'center',
+    marginTop: '30px',
+    flexWrap: 'wrap'
+  },
+  primaryButton: {
+    display: 'inline-block',
+    padding: '14px 28px',
+    borderRadius: '8px',
+    textDecoration: 'none',
+    fontWeight: '500',
+    fontSize: '14px',
+    background: '#10b981',
+    color: 'white',
+    border: '2px solid #10b981',
+    transition: 'all 0.3s ease',
+    cursor: 'pointer'
+  },
+  secondaryButton: {
+    display: 'inline-block',
+    padding: '14px 28px',
+    borderRadius: '8px',
+    textDecoration: 'none',
+    fontWeight: '500',
+    fontSize: '14px',
+    background: 'white',
+    color: '#10b981',
+    border: '2px solid #10b981',
+    transition: 'all 0.3s ease',
+    cursor: 'pointer'
+  }
+};
+
+// Add CSS for spinner animation
+const spinnerStyle = `
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
 export default function PaymentSuccess() {
   return (
-    <Suspense fallback={
-      <div style={{ padding: '40px', textAlign: 'center' }}>
-        <h2>Loading...</h2>
-        <p>Preparing payment information...</p>
-      </div>
-    }>
-      <PaymentSuccessContent />
-    </Suspense>
+    <>
+      <style>{spinnerStyle}</style>
+      <Suspense fallback={
+        <div style={styles.container}>
+          <div style={styles.card}>
+            <h2 style={styles.title}>Loading...</h2>
+            <p style={styles.text}>Preparing payment information...</p>
+          </div>
+        </div>
+      }>
+        <PaymentSuccessContent />
+      </Suspense>
+    </>
   );
 }
