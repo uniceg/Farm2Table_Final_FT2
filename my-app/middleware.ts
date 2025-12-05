@@ -45,7 +45,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // 🟢 LESS STRICT Role-based route protection
+
   if (path.startsWith('/seller')) {
     if (userRole !== 'seller') {
       console.log('🚫 SELLER route accessed by:', userRole, '- redirecting to their respective dashboard');

@@ -957,9 +957,6 @@ export default function CartSidebar({
       { value: '16:00', label: '4:00 PM' },
       { value: '17:00', label: '5:00 PM' },
       { value: '18:00', label: '6:00 PM' }
-      { value: '19:00', label: '7:00 PM' },
-      { value: '20:00', label: '8:00 PM' },
-      { value: '21:00', label: '9:00 PM' }
     ];
   };
   
