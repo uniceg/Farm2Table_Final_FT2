@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Star, Minus, Plus, ShoppingCart, MessageCircle, Store, Heart, MapPin, Image, Video, Info, Snowflake } from "lucide-react";
+import { ChevronLeft, ChevronRight, Star, Minus, Plus, ShoppingCart, MessageCircle, Store, Heart, MapPin, Image, Snowflake } from "lucide-react";
 import { useCart } from "../../../context/CartContext";
 import { useAuth } from "../../../context/AuthContext";
 import CartSidebar from "../../../../components/cart/CartSidebar";
@@ -9,10 +9,9 @@ import OrderSuccessModal from "../../../../components/auth/modals/OrderModal/Ord
 import { doc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp, setDoc, deleteDoc, updateDoc, orderBy } from "firebase/firestore";
 import { db, auth } from "../../../../utils/lib/firebase";
 import { updateStock } from "../../../../utils/lib/productService";
-import { PricingCalculator } from "../../../../utils/lib/pricingService";
 import styles from "./product.module.css";
 
-type ActiveTab = 'description' | 'reviews' | 'pricing';
+type ActiveTab = 'description' | 'reviews';
 
 // ✅ FIXED: Enhanced formatLocation function
 const formatLocation = (location: any): string => {
@@ -144,17 +143,7 @@ interface Product {
     fullName?: string;
   };
   
-  // 🟢 ADDED: New pricing transparency fields
-  farmerPrice?: number;
-  marketPrice?: number;
-  platformFee?: number;
-  shippingFee?: number;
-  vatAmount?: number;
-  finalPrice?: number;
-  priceBreakdown?: any;
-  estimatedDistance?: number;
-  estimatedDeliveryTime?: string;
-  // ✅ ADDED: MOQ field
+  // ✅ SIMPLIFIED: Only keep essential fields that marketplace uses
   minimumOrderQuantity?: number;
   // 🟢 ADDED: Cold chain and tags fields
   requiresColdChain?: boolean;
@@ -187,7 +176,6 @@ export default function ProductPage() {
   const [filteredReviews, setFilteredReviews] = useState<Review[]>([]);
   const [sellerProducts, setSellerProducts] = useState<any[]>([]);
   const [sellerData, setSellerData] = useState<any>(null);
-  const [calculatedPriceBreakdown, setCalculatedPriceBreakdown] = useState<any>(null);
   
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [orderSuccessData, setOrderSuccessData] = useState<any>(null);
@@ -202,58 +190,18 @@ export default function ProductPage() {
     return null;
   }, [userProfile]);
 
-  // 🟢 ADDED: Calculate price breakdown when product and locations are available
+  // ✅ ADDED: Debug logging for price verification
   useEffect(() => {
-    if (product && currentUserLocation && sellerData?.location) {
-      calculatePriceBreakdown();
+    if (product) {
+      console.log("💰 PRICE DEBUG - Product Page:", {
+        productId: product.id,
+        name: product.name,
+        price: product.price,
+        priceFormatted: product.price.toFixed(2),
+        typeofPrice: typeof product.price,
+      });
     }
-  }, [product, currentUserLocation, sellerData]);
-
-  const calculatePriceBreakdown = async () => {
-    if (!product || !currentUserLocation || !sellerData?.location) return;
-
-    try {
-      // Calculate distance between user and seller
-      const distance = PricingCalculator.calculateDistance(
-        currentUserLocation.lat,
-        currentUserLocation.lng,
-        sellerData.location.lat,
-        sellerData.location.lng
-      );
-
-      // Calculate shipping
-      const shipping = PricingCalculator.calculateShipping(
-        distance,
-        sellerData.address?.barangay || extractBarangayFromAddress(sellerData.address),
-        'motorcycle'
-      );
-
-      // Calculate complete price breakdown
-      const priceBreakdown = PricingCalculator.calculateProductPricing(
-        product.farmerPrice || product.price,
-        product.category,
-        product.unit,
-        shipping
-      );
-
-      setCalculatedPriceBreakdown(priceBreakdown);
-
-      // Update product with calculated pricing if needed
-      if (!product.priceBreakdown) {
-        setProduct(prev => prev ? {
-          ...prev,
-          priceBreakdown: priceBreakdown,
-          shippingFee: shipping.total,
-          estimatedDistance: distance,
-          estimatedDeliveryTime: shipping.estimatedTime,
-          finalPrice: priceBreakdown.finalPrice
-        } : null);
-      }
-
-    } catch (error) {
-      console.error("❌ Error calculating price breakdown:", error);
-    }
-  };
+  }, [product]);
 
   useEffect(() => {
     console.log("🔍 USER PROFILE FULL STRUCTURE:", userProfile);
@@ -494,6 +442,15 @@ export default function ProductPage() {
         }
         const productData = productDoc.data();
         
+        // ✅ ADDED: Debug logging for Firestore price data
+        console.log("💰 PRICE DEBUG - Raw Firestore data:", {
+          price: productData.price,
+          typeofPrice: typeof productData.price,
+          allPriceFields: Object.keys(productData)
+            .filter(key => key.toLowerCase().includes('price'))
+            .map(key => ({ key, value: productData[key], type: typeof productData[key] }))
+        });
+        
         if (productData.sellerId) {
           await fetchSellerData(productData.sellerId);
         }
@@ -513,6 +470,7 @@ export default function ProductPage() {
           imageUrls: productData.imageUrls,
           location: formattedLocation,
           farmName: productData.farmName || "Unknown Farm",
+          // ✅ FIXED: Use same logic as marketplace - just parseFloat
           price: parseFloat(productData.price) || 0,
           unit: productData.unit || "unit",
           sold: productData.sold || 0,
@@ -549,17 +507,7 @@ export default function ProductPage() {
             displayName: productData.farmName,
             fullName: productData.farmName
           },
-          // 🟢 ADDED: New pricing fields
-          farmerPrice: productData.farmerPrice,
-          marketPrice: productData.marketPrice,
-          platformFee: productData.platformFee,
-          shippingFee: productData.shippingFee,
-          vatAmount: productData.vatAmount,
-          finalPrice: productData.finalPrice,
-          priceBreakdown: productData.priceBreakdown,
-          estimatedDistance: productData.estimatedDistance,
-          estimatedDeliveryTime: productData.estimatedDeliveryTime,
-          // ✅ ADDED: MOQ field
+          // ✅ SIMPLIFIED: Only essential fields
           minimumOrderQuantity: productData.minimumOrderQuantity || 1,
           // 🟢 ADDED: Cold chain and tags fields
           requiresColdChain: productData.requiresColdChain || false,
@@ -684,6 +632,7 @@ export default function ProductPage() {
         id: product.id,
         name: product.name,
         location: formatLocation(product.location),
+        // ✅ FIXED: Use base price only, same as marketplace
         price: product.price,
         unit: product.unit,
         quantity: quantity,
@@ -701,14 +650,6 @@ export default function ProductPage() {
         },
         // ✅ ADDED: MOQ field for cart validation
         minimumOrderQuantity: product.minimumOrderQuantity || 1,
-        // 🟢 ADDED: Pricing fields for cart
-        farmerPrice: product.farmerPrice,
-        marketPrice: product.marketPrice,
-        platformFee: product.platformFee,
-        shippingFee: product.shippingFee,
-        vatAmount: product.vatAmount,
-        finalPrice: product.finalPrice,
-        priceBreakdown: product.priceBreakdown || calculatedPriceBreakdown,
         // 🟢 ADDED: Cold chain field for cart
         requiresColdChain: product.requiresColdChain || false
       };
@@ -716,6 +657,7 @@ export default function ProductPage() {
       console.log("🎯 Final Cart Item Data:", {
         name: cartItem.name,
         quantity: cartItem.quantity,
+        price: cartItem.price,
         farmer: cartItem.farmer,
         hasLocation: !!cartItem.farmer?.location,
         moq: cartItem.minimumOrderQuantity,
@@ -744,6 +686,7 @@ export default function ProductPage() {
         id: product.id,
         name: product.name,
         location: formatLocation(product.location),
+        // ✅ FIXED: Use base price only, same as marketplace
         price: product.price,
         unit: product.unit,
         quantity: quantity,
@@ -761,14 +704,6 @@ export default function ProductPage() {
         },
         // ✅ ADDED: MOQ field for cart validation
         minimumOrderQuantity: product.minimumOrderQuantity || 1,
-        // 🟢 ADDED: Pricing fields for cart
-        farmerPrice: product.farmerPrice,
-        marketPrice: product.marketPrice,
-        platformFee: product.platformFee,
-        shippingFee: product.shippingFee,
-        vatAmount: product.vatAmount,
-        finalPrice: product.finalPrice,
-        priceBreakdown: product.priceBreakdown || calculatedPriceBreakdown,
         // 🟢 ADDED: Cold chain field for cart
         requiresColdChain: product.requiresColdChain || false
       };
@@ -776,6 +711,7 @@ export default function ProductPage() {
       console.log("🎯 Buy Now Cart Item Data:", {
         name: cartItem.name,
         quantity: cartItem.quantity,
+        price: cartItem.price,
         farmer: cartItem.farmer,
         hasLocation: !!cartItem.farmer?.location,
         moq: cartItem.minimumOrderQuantity,
@@ -1157,9 +1093,10 @@ export default function ProductPage() {
             </div>
           </div>
           
+          {/* ✅ UPDATED: Show only base price with proper formatting like marketplace */}
           <div className={styles.priceContainer}>
             <div className={styles.priceSection}>
-              <span className={styles.price}>₱{product.finalPrice || product.price}</span>
+              <span className={styles.price}>₱{product.price.toFixed(2)}</span>
               <span className={styles.unit}>/{safeRender(product.unit, 'unit')}</span>
             </div>
           </div>
