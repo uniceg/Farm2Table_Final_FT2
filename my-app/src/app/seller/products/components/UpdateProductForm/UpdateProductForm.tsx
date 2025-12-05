@@ -46,8 +46,10 @@ export default function UpdateProductForm({ onClose, product, onUpdate }: Update
     const [formData, setFormData] = useState({
         name: product.name,
         price: product.price,
+        farmerPrice: product.farmerPrice || product.price, // ✅ ADDED: farmerPrice field
         stock: product.stock,
         minStock: product.minStock || 10,
+        minimumOrderQuantity: product.minimumOrderQuantity || 1, // ✅ ADDED: MOQ field
         description: product.description || "",
         category: product.category || "Fresh Produce",
         unit: product.unit || "kg",
@@ -273,19 +275,21 @@ export default function UpdateProductForm({ onClose, product, onUpdate }: Update
         setError("");
 
         try {
-            // Create the proper update data structure
+            // ✅ CORRECTED: Create the proper update data structure with farmerPrice
             const updatedProductData = {
                 name: formData.name,
                 description: formData.description,
                 price: typeof formData.price === 'string' ? parseFloat(formData.price) : formData.price,
+                farmerPrice: typeof formData.farmerPrice === 'string' ? parseFloat(formData.farmerPrice) : formData.farmerPrice, // ✅ ADDED
                 stock: typeof formData.stock === 'string' ? parseInt(formData.stock) : formData.stock,
                 minStock: typeof formData.minStock === 'string' ? parseInt(formData.minStock) : formData.minStock,
+                minimumOrderQuantity: typeof formData.minimumOrderQuantity === 'string' ? parseInt(formData.minimumOrderQuantity) : formData.minimumOrderQuantity, // ✅ ADDED
                 category: formData.category,
                 unit: formData.unit,
                 farmName: sellerData?.farmName || product.farmName || "My Farm",
                 location: sellerData?.location || product.location || "Farm Location",
                 requiresColdChain: requiresColdChain,
-                tags: selectedTags.slice(0, 4) // Include tags from second component
+                tags: selectedTags.slice(0, 4)
             };
 
             console.log('📤 Calling updateProduct with:', {
@@ -471,7 +475,7 @@ export default function UpdateProductForm({ onClose, product, onUpdate }: Update
 
                     {/* Text Fields */}
                     <div className={styles.textFieldsSection}>
-                        {/* Product Name and Price */}
+                        {/* Product Name and Selling Price */}
                         <div className={styles.inlineFormGroup}>
                             <div className={styles.formGroup}>
                                 <label className={styles.formLabel}>
@@ -487,7 +491,7 @@ export default function UpdateProductForm({ onClose, product, onUpdate }: Update
                             </div>
                             <div className={styles.formGroup}>
                                 <label className={styles.formLabel}>
-                                    Price (₱) <span className={styles.required}>*</span>
+                                    Selling Price (₱) <span className={styles.required}>*</span>
                                 </label>
                                 <input
                                     name="price"
@@ -497,6 +501,41 @@ export default function UpdateProductForm({ onClose, product, onUpdate }: Update
                                     placeholder="0.00"
                                     min="0"
                                     step="0.01"
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        {/* Farmer Price and MOQ */}
+                        <div className={styles.inlineFormGroup}>
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>
+                                    Farmer Price (₱)
+                                </label>
+                                <input
+                                    name="farmerPrice"
+                                    type="number"
+                                    value={formData.farmerPrice}
+                                    onChange={handleChange}
+                                    placeholder="0.00"
+                                    min="0"
+                                    step="0.01"
+                                />
+                                <small className={styles.helpText}>
+                                    Your cost price (optional)
+                                </small>
+                            </div>
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>
+                                    Minimum Order Quantity (MOQ) <span className={styles.required}>*</span>
+                                </label>
+                                <input
+                                    name="minimumOrderQuantity"
+                                    type="number"
+                                    value={formData.minimumOrderQuantity}
+                                    onChange={handleChange}
+                                    placeholder="1"
+                                    min="1"
                                     required
                                 />
                             </div>
